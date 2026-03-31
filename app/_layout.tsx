@@ -7,12 +7,11 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="modal"
-        options={{ presentation: "modal", title: "Modal" }}
-      />
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="favorite" options={{ headerShown: false }} />
+      <Stack.Screen name="request" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -3,5 +3,9 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "npx expo": true,
+    "npx npm": true
   }
 }
