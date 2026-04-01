@@ -209,7 +209,7 @@ export default function PetDetailsScreen() {
           <TouchableOpacity
             className="flex-1 bg-primary h-14 rounded-full flex-row items-center justify-center shadow-sm"
             onPress={() => {
-              router.push(`/adoption-request/${id}`);
+              router.push({ pathname: "/adoption-request/[id]", params: { id: String(id), name: pet.name } });
             }}
           >
             <Text className="text-on-primary font-headline font-bold text-lg">

@@ -1,10 +1,12 @@
+import { supabase } from "@/lib/supabase";
 import { adoptionRequestSchema } from "@/schema/adoption.schema";
 import { MaterialIcons } from "@expo/vector-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -20,13 +22,14 @@ import { z } from "zod";
 type AdoptionFormData = z.infer<typeof adoptionRequestSchema>;
 
 export default function AdoptionRequestScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, name } = useLocalSearchParams();
   const router = useRouter();
 
   const {
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<AdoptionFormData>({
     resolver: zodResolver(adoptionRequestSchema),
@@ -44,13 +47,87 @@ export default function AdoptionRequestScreen() {
     },
   });
 
+  useEffect(() => {
+    const prefillUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        if (user.email) setValue("email", user.email);
+      }
+    };
+    prefillUser();
+  }, [setValue]);
+
   const housingTypeWatch = watch("housingType");
 
-  const onSubmit = (data: AdoptionFormData) => {
-    // TODO: Hook up with Supabase here
-    console.log("Submit Adopt Request:", data);
-    // After submit, maybe route back or to a success screen
-    router.back();
+  const submitApplicationToDatabase = async (data: AdoptionFormData) => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        Alert.alert("Error", "You must be logged in to submit request");
+        return;
+      }
+
+      const { error } = await supabase.from("adoption_requests").insert([
+        {
+          pet_id: String(id),
+          pet_name: name ? String(name) : "Unknown Pet",
+          user_id: user.id,
+          full_name: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          own_or_rent: data.ownOrRent,
+          housing_type: data.housingType,
+          other_housing_type: data.otherHousingType || null,
+          has_yard: data.hasYard,
+          adult_count: data.adultCount,
+          child_count: data.childCount,
+          other_pets: data.otherPets || null,
+        },
+      ]);
+
+      if (error) {
+        console.error("Supabase insert error:", error);
+        Alert.alert(
+          "Error",
+          "Could not submit your request. Please try again.",
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Application Submitted!",
+        "Your adoption request has been successfully submitted! We will review your application and get back to you soon.",
+        [
+          {
+            text: "Go to Home",
+            onPress: () => router.replace("/"),
+          },
+        ],
+      );
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      Alert.alert("Error", "An unexpected error occurred. Please try again.");
+    }
+  };
+
+  const onConfirmApplication = (data: AdoptionFormData) => {
+    Alert.alert(
+      "Confirm Submission",
+      "Are you sure you want to submit this adoption request?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Yes, Submit",
+          onPress: () => submitApplicationToDatabase(data),
+        },
+      ],
+    );
   };
 
   return (
@@ -75,7 +152,6 @@ export default function AdoptionRequestScreen() {
           showsVerticalScrollIndicator={false}
           className="px-6 pt-4 pb-12"
         >
-          {/* Intro Section */}
           <Text className="font-headline font-extrabold text-3xl text-on-surface mb-2">
             Almost there!
           </Text>
@@ -83,7 +159,7 @@ export default function AdoptionRequestScreen() {
             Fill out this form to request adoption. We will review your
             application and get back to you soon.
           </Text>
-          {/* SECTION: Personal Info */}
+
           <View className="mb-8">
             <Text className="font-headline font-bold text-lg text-on-surface mb-4">
               1. Personal Information
@@ -164,7 +240,7 @@ export default function AdoptionRequestScreen() {
               )}
             </View>
           </View>
-          {/* SECTION: Living Situation */}
+
           <View className="mb-8">
             <Text className="font-headline font-bold text-lg text-on-surface mb-4">
               2. Living Situation
@@ -291,7 +367,6 @@ export default function AdoptionRequestScreen() {
                 Household Size
               </Text>
               <View className="bg-surface-container-low p-4 rounded-xl gap-4">
-                {/* Adults Counter */}
                 <View className="flex-row justify-between items-center">
                   <Text className="text-on-surface font-bold">Adults</Text>
                   <Controller
@@ -325,10 +400,8 @@ export default function AdoptionRequestScreen() {
                   />
                 </View>
 
-                {/* Divider */}
                 <View className="h-[1px] bg-surface-container-highest w-full" />
 
-                {/* Children Counter */}
                 <View className="flex-row justify-between items-center">
                   <Text className="text-on-surface font-bold">Children</Text>
                   <Controller
@@ -364,7 +437,7 @@ export default function AdoptionRequestScreen() {
               </View>
             </View>
           </View>
-          {/* SECTION: Pet Experience */}
+
           <View className="mb-8">
             <Text className="font-headline font-bold text-lg text-on-surface mb-4">
               3. Pet Experience
@@ -390,14 +463,13 @@ export default function AdoptionRequestScreen() {
               />
             </View>
           </View>
-          <View className="h-32" /> {/* Bottom Spacing */}
+          <View className="h-32" />
         </ScrollView>
 
-        {/* Sticky Bottom Action inside AvoidView so it moves up with keyboard if needed */}
         <View className="absolute bottom-0 w-full bg-white/95 px-6 pt-4 pb-8 border-t border-surface-container-highest">
           <TouchableOpacity
             className="bg-primary h-14 rounded-full flex-row items-center justify-center shadow-sm"
-            onPress={handleSubmit(onSubmit)}
+            onPress={handleSubmit(onConfirmApplication)}
           >
             <Text className="text-on-primary font-headline font-bold text-lg">
               Submit Application
