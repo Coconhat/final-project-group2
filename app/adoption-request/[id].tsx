@@ -47,18 +47,34 @@ export default function AdoptionRequestScreen() {
     },
   });
 
+  const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
+
   useEffect(() => {
-    const prefillUser = async () => {
+    const checkAuthAndPrefill = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) {
-        if (user.email) setValue("email", user.email);
+      if (!user) {
+        router.replace("/login");
+        return;
       }
+
+      if (user.email) setValue("email", user.email);
+      setIsLoadingAuth(false);
     };
-    prefillUser();
-  }, [setValue]);
+    checkAuthAndPrefill();
+  }, [setValue, router]);
+
+  if (isLoadingAuth) {
+    return (
+      <View className="flex-1 bg-background justify-center items-center">
+        <Text className="text-on-surface-variant">
+          Checking authentication...
+        </Text>
+      </View>
+    );
+  }
 
   const housingTypeWatch = watch("housingType");
 

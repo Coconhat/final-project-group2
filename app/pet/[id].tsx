@@ -208,8 +208,16 @@ export default function PetDetailsScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             className="flex-1 bg-primary h-14 rounded-full flex-row items-center justify-center shadow-sm"
-            onPress={() => {
-              router.push({ pathname: "/adoption-request/[id]", params: { id: String(id), name: pet.name } });
+            onPress={async () => {
+              const { data: authData } = await supabase.auth.getUser();
+              if (!authData.user) {
+                router.push("/login");
+                return;
+              }
+              router.push({
+                pathname: "/adoption-request/[id]",
+                params: { id: String(id), name: pet.name },
+              });
             }}
           >
             <Text className="text-on-primary font-headline font-bold text-lg">

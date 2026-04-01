@@ -1,9 +1,9 @@
+import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { supabase } from "@/lib/supabase";
 
 export default function Header() {
   const [user, setUser] = useState<any>(null);
@@ -58,7 +58,9 @@ export default function Header() {
             onPress={() => router.push("/login")}
             className="flex-row items-center gap-2"
           >
-            <Text className="text-on-surface-variant font-bold text-xs text-right w-12">Not logged in</Text>
+            <Text className="text-on-surface-variant font-bold text-xs text-right w-12">
+              Not logged in
+            </Text>
             <View className="w-10 h-10 rounded-full bg-surface-container-low border-2 border-surface-container-highest items-center justify-center">
               <MaterialIcons name="person-outline" size={24} color="#a79a96" />
             </View>
