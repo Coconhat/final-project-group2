@@ -61,6 +61,23 @@ export default function AdoptionRequestScreen() {
       }
 
       if (user.email) setValue("email", user.email);
+
+      const { data: existingRequest } = await supabase
+        .from("adoption_requests")
+        .select("id")
+        .eq("pet_id", String(id))
+        .eq("user_id", user.id)
+        .single();
+
+      if (existingRequest) {
+        Alert.alert(
+          "Already Requested",
+          "You have already applied for this pet!",
+        );
+        router.replace("/");
+        return;
+      }
+
       setIsLoadingAuth(false);
     };
     checkAuthAndPrefill();

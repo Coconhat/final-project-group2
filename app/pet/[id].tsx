@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   Text,
@@ -18,19 +19,35 @@ export default function PetDetailsScreen() {
   const [pet, setPet] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [hasRequested, setHasRequested] = useState(false);
 
   useEffect(() => {
     const fetchPetDetails = async () => {
       try {
-        const { data, error } = await supabase
+        const { data: petData, error: petError } = await supabase
           .from("pets")
           .select("*")
           .eq("id", id)
           .single();
 
-        if (error) throw error;
-        setPet(data);
-        setIsFavorite(data.is_favorite || false);
+        if (petError) throw petError;
+        setPet(petData);
+        setIsFavorite(petData.is_favorite || false);
+
+        // Check if current user has already requested this pet
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData.user) {
+          const { data: requestData, error: requestError } = await supabase
+            .from("adoption_requests")
+            .select("id")
+            .eq("pet_id", String(id))
+            .eq("user_id", authData.user.id)
+            .single();
+
+          if (requestData) {
+            setHasRequested(true);
+          }
+        }
       } catch (error) {
         console.error("Error fetching pet details:", error);
       } finally {
@@ -207,11 +224,21 @@ export default function PetDetailsScreen() {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 bg-primary h-14 rounded-full flex-row items-center justify-center shadow-sm"
+            className={`flex-1 h-14 rounded-full flex-row items-center justify-center shadow-sm ${
+              hasRequested ? "bg-surface-container-highest" : "bg-primary"
+            }`}
+            disabled={hasRequested}
             onPress={async () => {
               const { data: authData } = await supabase.auth.getUser();
               if (!authData.user) {
                 router.push("/login");
+                return;
+              }
+              if (hasRequested) {
+                Alert.alert(
+                  "Already Requested",
+                  "You have already submitted an adoption request for this pet.",
+                );
                 return;
               }
               router.push({
@@ -220,8 +247,12 @@ export default function PetDetailsScreen() {
               });
             }}
           >
-            <Text className="text-on-primary font-headline font-bold text-lg">
-              Start Adoption Request
+            <Text
+              className={`font-headline font-bold text-lg ${
+                hasRequested ? "text-on-surface-variant" : "text-on-primary"
+              }`}
+            >
+              {hasRequested ? "Already Requested" : "Start Adoption Request"}
             </Text>
           </TouchableOpacity>
         </View>
