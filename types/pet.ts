@@ -9,7 +9,7 @@ export type Pet = {
   tags?: string[];
   description?: string;
   gender?: "Male" | "Female";
-  distance?: string;
+  size?: string;
   isFavorite?: boolean;
 };
 
@@ -26,7 +26,7 @@ export const defaultPets: Pet[] = [
     tags: ["Friendly", "Playful", "Good with kids"],
     description: "Luna is a very energetic and friendly dog.",
     gender: "Female",
-    distance: "2.5 km",
+    size: "Small",
   },
   {
     id: "2",
@@ -40,7 +40,7 @@ export const defaultPets: Pet[] = [
     tags: ["Curious", "Independent"],
     description: "Oliver loves to explore and cuddle when he's tired.",
     gender: "Male",
-    distance: "1.2 km",
+    size: "Medium",
   },
   {
     id: "3",
@@ -54,7 +54,7 @@ export const defaultPets: Pet[] = [
     tags: ["Loyal", "Active"],
     description: "Cooper needs an active family to keep up with his energy.",
     gender: "Male",
-    distance: "5.0 km",
+    size: "Large",
   },
   {
     id: "4",
@@ -68,6 +68,6 @@ export const defaultPets: Pet[] = [
     tags: ["Sleepy", "Soft"],
     description: "Bella just loves to sleep all day.",
     gender: "Female",
-    distance: "3.4 km",
+    size: "Small",
   },
 ];

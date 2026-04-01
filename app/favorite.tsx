@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,6 +17,7 @@ import Header from "@/components/header";
 export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useFocusEffect(
     useCallback(() => {
@@ -94,16 +95,19 @@ export default function FavoritesScreen() {
           <Text className="font-headline text-2xl font-bold text-on-surface">
             {item.name}
           </Text>
-          {item.distance && (
+          {item.size && (
             <Text className="text-secondary font-bold text-sm">
-              {item.distance}
+              {item.size}
             </Text>
           )}
         </View>
         <Text className="font-body text-on-surface-variant mb-6 text-sm leading-relaxed">
           {item.description || `${item.breed} � ${item.age}`}
         </Text>
-        <TouchableOpacity className="flex-row items-center gap-2 mt-auto">
+        <TouchableOpacity
+          className="flex-row items-center gap-2 mt-auto"
+          onPress={() => router.push(`/pet/${item.id}`)}
+        >
           <Text className="text-primary font-bold text-sm">Adopt Me</Text>
           <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
         </TouchableOpacity>

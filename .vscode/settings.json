@@ -6,6 +6,8 @@
   },
   "chat.tools.terminal.autoApprove": {
     "npx expo": true,
-    "npx npm": true
+    "npx npm": true,
+    "mkdir": true,
+    "New-Item": true
   }
 }

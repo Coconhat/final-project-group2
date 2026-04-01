@@ -131,10 +131,13 @@ export default function PetCardsGrid() {
             )}
           </View>
           <View className="mt-5">
-            <TouchableOpacity className="flex-row items-center gap-2 mt-auto">
+            <TouchableOpacity
+              className="flex-row items-center gap-2 mt-auto"
+              onPress={() => router.push(`/pet/${item.id}`)}
+            >
               <Text className="text-primary font-bold text-sm">Adopt Me</Text>
               <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
-            </TouchableOpacity>{" "}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
