@@ -38,6 +38,13 @@ export default function PetCardsGrid() {
   );
 
   const toggleFavorite = async (id: string, currentStatus: boolean) => {
+    // Check if user is logged in
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData.user) {
+      router.push("/login");
+      return;
+    }
+
     const newStatus = !currentStatus;
 
     setPets((currentPets) =>

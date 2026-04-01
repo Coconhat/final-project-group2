@@ -44,6 +44,13 @@ export default function PetDetailsScreen() {
   }, [id]);
 
   const toggleFavorite = async () => {
+    // Check if user is logged in
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData.user) {
+      router.push("/login");
+      return;
+    }
+
     const newStatus = !isFavorite;
     setIsFavorite(newStatus);
 
