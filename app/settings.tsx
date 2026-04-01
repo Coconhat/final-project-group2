@@ -1,11 +1,30 @@
 import BottomNav from "@/components/BottomNav";
+import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React from "react";
-import { ScrollView, Switch, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  ScrollView,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function SettingsScreen() {
   const [pushEnabled, setPushEnabled] = React.useState(true);
   const [emailEnabled, setEmailEnabled] = React.useState(false);
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      Alert.alert("Logout Error", error.message);
+    } else {
+      router.replace("/");
+    }
+  };
 
   return (
     <View className="flex-1 bg-background">
@@ -106,7 +125,10 @@ export default function SettingsScreen() {
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#a79a96" />
             </TouchableOpacity>
-            <TouchableOpacity className="flex-row items-center p-4">
+            <TouchableOpacity
+              className="flex-row items-center p-4"
+              onPress={handleLogout}
+            >
               <View className="flex-row items-center gap-3">
                 <MaterialIcons name="logout" size={24} color="#a83836" />
                 <Text className="text-error font-medium text-base">
