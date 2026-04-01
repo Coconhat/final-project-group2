@@ -1,4 +1,4 @@
-﻿import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -63,7 +63,7 @@ export default function AdoptionRequestScreen() {
           <Text className="font-headline font-extrabold text-3xl text-on-surface mb-2">
             Almost there!
           </Text>
-          <Text className="font-body text-base text-on-surface-variant mb-6">
+          <Text className="text-base text-on-surface-variant mb-6">
             Fill out this form to request adoption. We will review your
             application and get back to you soon.
           </Text>
@@ -83,7 +83,7 @@ export default function AdoptionRequestScreen() {
                   setFormData((prev) => ({ ...prev, fullName: text }))
                 }
                 placeholder="John Doe"
-                className="bg-surface-container-low text-on-surface p-4 rounded-xl font-body"
+                className="bg-surface-container-low text-on-surface p-4 rounded-xl"
               />
             </View>
 
@@ -99,7 +99,7 @@ export default function AdoptionRequestScreen() {
                 placeholder="john@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                className="bg-surface-container-low text-on-surface p-4 rounded-xl font-body"
+                className="bg-surface-container-low text-on-surface p-4 rounded-xl"
               />
             </View>
 
@@ -114,7 +114,7 @@ export default function AdoptionRequestScreen() {
                 }
                 placeholder="(555) 123-4567"
                 keyboardType="phone-pad"
-                className="bg-surface-container-low text-on-surface p-4 rounded-xl font-body"
+                className="bg-surface-container-low text-on-surface p-4 rounded-xl"
               />
             </View>
           </View>
@@ -142,7 +142,7 @@ export default function AdoptionRequestScreen() {
                     }`}
                   >
                     <Text
-                      className={`font-body font-bold text-base ${
+                      className={`font-bold text-base ${
                         formData.ownOrRent === option
                           ? "text-primary"
                           : "text-on-surface-variant"
@@ -173,7 +173,7 @@ export default function AdoptionRequestScreen() {
                     }`}
                   >
                     <Text
-                      className={`font-body font-bold ${
+                      className={`font-bold ${
                         formData.housingType === option
                           ? "text-primary"
                           : "text-on-surface-variant"
@@ -191,13 +191,13 @@ export default function AdoptionRequestScreen() {
                     setFormData((prev) => ({ ...prev, otherHousingType: text }))
                   }
                   placeholder="Please specify your housing type"
-                  className="bg-surface-container-low text-on-surface p-4 rounded-xl font-body mt-3"
+                  className="bg-surface-container-low text-on-surface p-4 rounded-xl mt-3"
                 />
               )}
             </View>
 
             <View className="mb-4 flex-row justify-between items-center bg-surface-container-low p-4 rounded-xl">
-              <Text className="text-on-surface font-body font-bold">
+              <Text className="text-on-surface font-bold">
                 Do you have a fenced yard?
               </Text>
               <Switch
@@ -217,7 +217,7 @@ export default function AdoptionRequestScreen() {
               <View className="bg-surface-container-low p-4 rounded-xl gap-4">
                 {/* Adults Counter */}
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-on-surface font-body font-bold">
+                  <Text className="text-on-surface font-bold">
                     Adults (18+)
                   </Text>
                   <View className="flex-row items-center gap-4">
@@ -257,9 +257,7 @@ export default function AdoptionRequestScreen() {
 
                 {/* Children Counter */}
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-on-surface font-body font-bold">
-                    Children
-                  </Text>
+                  <Text className="text-on-surface font-bold">Children</Text>
                   <View className="flex-row items-center gap-4">
                     <TouchableOpacity
                       onPress={() =>
@@ -310,7 +308,7 @@ export default function AdoptionRequestScreen() {
                   setFormData((prev) => ({ ...prev, otherPets: text }))
                 }
                 placeholder="e.g., 1 Cat, None"
-                className="bg-surface-container-low text-on-surface p-4 rounded-xl font-body"
+                className="bg-surface-container-low text-on-surface p-4 rounded-xl"
                 multiline
               />
             </View>
