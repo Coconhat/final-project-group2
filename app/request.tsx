@@ -146,6 +146,7 @@ export default function RequestScreen() {
           </View>
         )}
       </ScrollView>
+      <BottomNav />
     </View>
   );
 }
