@@ -1,5 +1,5 @@
-import { supabase } from "@/lib/supabase";
 import { type RaceFilter } from "@/components/CategoryFilters";
+import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -20,7 +20,9 @@ const isCompletedStatus = (status: string | null | undefined) => {
 };
 
 const getPetRace = (pet: any) =>
-  String(pet?.race || pet?.pet_type || pet?.type || "").toLowerCase().trim();
+  String(pet?.race || pet?.pet_type || pet?.type || "")
+    .toLowerCase()
+    .trim();
 
 const isOtherRace = (race: string) => !["cat", "dog", "bird"].includes(race);
 
@@ -28,7 +30,9 @@ type PetCardsGridProps = {
   raceFilter?: RaceFilter;
 };
 
-export default function PetCardsGrid({ raceFilter = "all" }: PetCardsGridProps) {
+export default function PetCardsGrid({
+  raceFilter = "all",
+}: PetCardsGridProps) {
   const [pets, setPets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();

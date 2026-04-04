@@ -2,7 +2,7 @@ import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -88,6 +88,12 @@ export default function ChatScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [threads, setThreads] = useState<AdoptionRequest[]>([]);
+  const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
+    "pending",
+  );
+  const [unreadThreadIds, setUnreadThreadIds] = useState<
+    Record<string, boolean>
+  >({});
 
   const [selectedRequest, setSelectedRequest] =
     useState<AdoptionRequest | null>(null);
@@ -99,6 +105,7 @@ export default function ChatScreen() {
 
   const messageChannelRef = useRef<any>(null);
   const requestStatusChannelRef = useRef<any>(null);
+  const inboxChannelRef = useRef<any>(null);
   const autoOpenedRequestIdRef = useRef<string | null>(null);
 
   const cleanupMessageChannel = useCallback(async () => {
@@ -115,12 +122,32 @@ export default function ChatScreen() {
     }
   }, []);
 
+  const cleanupInboxChannel = useCallback(async () => {
+    if (inboxChannelRef.current) {
+      await supabase.removeChannel(inboxChannelRef.current);
+      inboxChannelRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       void cleanupMessageChannel();
       void cleanupRequestStatusChannel();
+      void cleanupInboxChannel();
     };
-  }, [cleanupMessageChannel, cleanupRequestStatusChannel]);
+  }, [cleanupInboxChannel, cleanupMessageChannel, cleanupRequestStatusChannel]);
+
+  const filteredThreads = useMemo(() => {
+    if (adminFilter === "pending") {
+      return threads.filter(
+        (thread) => normalizeRequestStatus(thread.status) === "pending",
+      );
+    }
+
+    return threads.filter(
+      (thread) => normalizeRequestStatus(thread.status) === "completed",
+    );
+  }, [adminFilter, threads]);
 
   const loadMessages = useCallback(async (requestId: string) => {
     setMessagesLoading(true);
@@ -180,6 +207,15 @@ export default function ChatScreen() {
 
   const openThread = useCallback(
     async (request: AdoptionRequest) => {
+      setUnreadThreadIds((current) => {
+        if (!current[request.id]) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
       setSelectedRequest(request);
       setDraftMessage("");
       await loadMessages(request.id);
@@ -256,6 +292,15 @@ export default function ChatScreen() {
       );
 
       setThreads(nextThreads);
+      setUnreadThreadIds((current) => {
+        const next = { ...current };
+        for (const requestId of Object.keys(next)) {
+          if (!nextThreads.some((thread) => thread.id === requestId)) {
+            delete next[requestId];
+          }
+        }
+        return next;
+      });
 
       setSelectedRequest((current) => {
         if (!current) {
@@ -291,6 +336,58 @@ export default function ChatScreen() {
       autoOpenedRequestIdRef.current = null;
     }
   }, [requestIdFromParams]);
+
+  useEffect(() => {
+    const subscribeToInboxMessages = async () => {
+      await cleanupInboxChannel();
+
+      if (!currentUserId || !isAdmin) {
+        return;
+      }
+
+      const channelName = `admin-chat-inbox-${currentUserId}-${Date.now()}`;
+
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "adoption_request_messages",
+          },
+          (payload) => {
+            const incoming = payload.new as RequestMessage;
+
+            if (!incoming?.request_id) {
+              return;
+            }
+
+            if (incoming.sender_id === currentUserId) {
+              return;
+            }
+
+            if (selectedRequest?.id === incoming.request_id) {
+              return;
+            }
+
+            setUnreadThreadIds((current) => ({
+              ...current,
+              [incoming.request_id]: true,
+            }));
+          },
+        )
+        .subscribe();
+
+      inboxChannelRef.current = channel;
+    };
+
+    void subscribeToInboxMessages();
+
+    return () => {
+      void cleanupInboxChannel();
+    };
+  }, [cleanupInboxChannel, currentUserId, isAdmin, selectedRequest?.id]);
 
   useEffect(() => {
     const subscribeToRequestStatus = async () => {
@@ -476,17 +573,60 @@ export default function ChatScreen() {
               </Text>
             </View>
 
-            {threads.length === 0 ? (
+            <View className="mb-4 px-2">
+              <View className="bg-surface-container-low rounded-full p-1 flex-row">
+                <TouchableOpacity
+                  onPress={() => setAdminFilter("pending")}
+                  className={`flex-1 h-10 rounded-full items-center justify-center ${
+                    adminFilter === "pending" ? "bg-primary" : "bg-transparent"
+                  }`}
+                >
+                  <Text
+                    className={`font-bold ${
+                      adminFilter === "pending"
+                        ? "text-on-primary"
+                        : "text-on-surface"
+                    }`}
+                  >
+                    Pending
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setAdminFilter("completed")}
+                  className={`flex-1 h-10 rounded-full items-center justify-center ${
+                    adminFilter === "completed"
+                      ? "bg-primary"
+                      : "bg-transparent"
+                  }`}
+                >
+                  <Text
+                    className={`font-bold ${
+                      adminFilter === "completed"
+                        ? "text-on-primary"
+                        : "text-on-surface"
+                    }`}
+                  >
+                    Completed
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {filteredThreads.length === 0 ? (
               <View className="bg-surface-container-low rounded-xl p-8 items-center mt-4">
                 <MaterialIcons name="forum" size={48} color="#e8e2d9" />
                 <Text className="text-on-surface-variant text-center mt-4">
-                  No request threads yet.
+                  {adminFilter === "pending"
+                    ? "No pending request threads."
+                    : "No completed request threads."}
                 </Text>
               </View>
             ) : (
-              threads.map((thread) => {
+              filteredThreads.map((thread) => {
                 const statusConfig =
                   STATUS_META[thread.status] || STATUS_META.pending;
+                const hasUnread = !!unreadThreadIds[thread.id];
                 return (
                   <TouchableOpacity
                     key={thread.id}
@@ -511,18 +651,29 @@ export default function ChatScreen() {
                           {thread.email ? ` | ${thread.email}` : ""}
                         </Text>
                       </View>
-                      <View
-                        className={`px-3 py-1 rounded-full ${statusConfig.bg}`}
-                      >
-                        <Text
-                          className={`uppercase text-[10px] font-bold ${statusConfig.text}`}
+                      <View className="items-end gap-2">
+                        {hasUnread && (
+                          <View className="h-2.5 w-2.5 rounded-full bg-error" />
+                        )}
+                        <View
+                          className={`px-3 py-1 rounded-full ${statusConfig.bg}`}
                         >
-                          {statusConfig.label}
-                        </Text>
+                          <Text
+                            className={`uppercase text-[10px] font-bold ${statusConfig.text}`}
+                          >
+                            {statusConfig.label}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                    <Text className="text-xs text-on-surface-variant mt-3">
-                      Open conversation
+                    <Text
+                      className={`text-xs mt-3 ${
+                        hasUnread
+                          ? "text-error font-bold"
+                          : "text-on-surface-variant"
+                      }`}
+                    >
+                      {hasUnread ? "New message" : "Open conversation"}
                     </Text>
                   </TouchableOpacity>
                 );

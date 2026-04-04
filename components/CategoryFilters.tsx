@@ -38,7 +38,9 @@ export default function CategoryFilters({
             className={`flex-row items-center gap-2 px-6 py-3 rounded-full ${
               isActive ? "bg-tertiary-container" : "bg-surface-container-low"
             }`}
-            style={index === FILTERS.length - 1 ? { marginRight: 24 } : undefined}
+            style={
+              index === FILTERS.length - 1 ? { marginRight: 24 } : undefined
+            }
           >
             <MaterialIcons
               name="pets"

@@ -23,7 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type AdoptionRequest = {
   id: string;
@@ -106,6 +106,7 @@ let cachedIsAdminForRequest: boolean | null = null;
 
 export default function RequestScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<AdoptionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -432,14 +433,6 @@ export default function RequestScreen() {
       return;
     }
 
-    if (!isAdmin && selectedRequest.status?.toLowerCase() !== "pending") {
-      Alert.alert(
-        "Chat closed",
-        "This request is no longer pending, so chat is read-only.",
-      );
-      return;
-    }
-
     setSendingMessage(true);
 
     const { error } = await supabase.from("adoption_request_messages").insert([
@@ -470,10 +463,7 @@ export default function RequestScreen() {
       minute: "2-digit",
     });
 
-  const chatIsClosed =
-    !isAdmin &&
-    !!selectedRequest &&
-    selectedRequest.status?.toLowerCase() !== "pending";
+  const chatIsClosed = false;
 
   const toggleChecklistItem = (requestId: string, item: string) => {
     setChecklistState((current) => ({
@@ -996,15 +986,15 @@ export default function RequestScreen() {
         presentationStyle="fullScreen"
         onRequestClose={closeChat}
       >
-        <SafeAreaView
-          className="flex-1 bg-background"
-          edges={["top", "bottom"]}
-        >
-          <View className="z-30 px-4 pt-3 pb-4 border-b border-surface-container-highest flex-row items-center gap-3 bg-background">
+        <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
+          <View
+            style={{ paddingTop: Math.max(insets.top, 12) + 6 }}
+            className="z-30 px-4 pb-4 border-b border-surface-container-highest flex-row items-center gap-3 bg-background"
+          >
             <Pressable
               onPress={closeChat}
-              hitSlop={18}
-              className="w-10 h-10 rounded-full bg-surface-container-low items-center justify-center"
+              hitSlop={24}
+              className="w-11 h-11 rounded-full bg-surface-container-low items-center justify-center"
             >
               <MaterialIcons name="arrow-back" size={22} color="#3e2f2b" />
             </Pressable>
