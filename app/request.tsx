@@ -23,7 +23,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type AdoptionRequest = {
   id: string;
@@ -120,6 +123,9 @@ export default function RequestScreen() {
   const [checklistState, setChecklistState] = useState<
     Record<string, Record<string, boolean>>
   >({});
+  const [latestMessages, setLatestMessages] = useState<Record<string, string>>(
+    {},
+  );
 
   const [chatVisible, setChatVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] =
@@ -131,6 +137,7 @@ export default function RequestScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const messageChannelRef = useRef<any>(null);
   const requestStatusChannelRef = useRef<any>(null);
+  const flatListRef = useRef<FlatList>(null);
   const ensureChecklistState = useCallback((items: AdoptionRequest[]) => {
     setChecklistState((current) => {
       const next = { ...current };
@@ -213,6 +220,8 @@ export default function RequestScreen() {
       cachedIsAdminForRequest = admin;
       setIsAdmin(admin);
 
+      let fetchedRequests: AdoptionRequest[] = [];
+
       if (admin) {
         const { data, error } = await supabase
           .from("adoption_requests")
@@ -222,12 +231,14 @@ export default function RequestScreen() {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        const next = ((data as AdoptionRequest[]) || []).map((request) => ({
-          ...request,
-          status: normalizeRequestStatus(request.status),
-        }));
-        setRequests(next);
-        ensureChecklistState(next);
+        fetchedRequests = ((data as AdoptionRequest[]) || []).map(
+          (request) => ({
+            ...request,
+            status: normalizeRequestStatus(request.status),
+          }),
+        );
+        setRequests(fetchedRequests);
+        ensureChecklistState(fetchedRequests);
       } else {
         const { data, error } = await supabase
           .from("adoption_requests")
@@ -236,12 +247,30 @@ export default function RequestScreen() {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        setRequests(
-          ((data as AdoptionRequest[]) || []).map((request) => ({
+        fetchedRequests = ((data as AdoptionRequest[]) || []).map(
+          (request) => ({
             ...request,
             status: normalizeRequestStatus(request.status),
-          })),
+          }),
         );
+        setRequests(fetchedRequests);
+      }
+
+      if (fetchedRequests.length > 0) {
+        const threadIds = fetchedRequests.map((t) => t.id);
+        const { data: msgs, error: msgError } = await supabase
+          .from("adoption_request_messages")
+          .select("request_id, message")
+          .in("request_id", threadIds)
+          .order("created_at", { ascending: false });
+
+        if (!msgError && msgs) {
+          const latestMap: Record<string, string> = {};
+          msgs.forEach((m) => {
+            if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
+          });
+          setLatestMessages(latestMap);
+        }
       }
     } catch (error: any) {
       console.error("Error fetching requests:", error);
@@ -383,6 +412,10 @@ export default function RequestScreen() {
         },
         (payload) => {
           const incoming = payload.new as RequestMessage;
+          setLatestMessages((currentMap) => ({
+            ...currentMap,
+            [requestId]: incoming.message,
+          }));
           setMessages((current) => {
             if (current.some((message) => message.id === incoming.id)) {
               return current;
@@ -940,11 +973,12 @@ export default function RequestScreen() {
                       className="text-on-surface-variant text-sm mb-3"
                       numberOfLines={1}
                     >
-                      {request.status === "pending"
-                        ? "Your application is under review."
-                        : request.status === "completed"
-                          ? "Congratulations on your adoption!"
-                          : "Unfortunately, this request was not approved."}
+                      {latestMessages[request.id] ||
+                        (request.status === "pending"
+                          ? "Your application is under review."
+                          : request.status === "completed"
+                            ? "Congratulations on your adoption!"
+                            : "Unfortunately, this request was not approved.")}
                     </Text>
                     <View className="flex-row flex-wrap gap-2">
                       <View
@@ -1043,9 +1077,20 @@ export default function RequestScreen() {
             </View>
           ) : (
             <FlatList
+              ref={flatListRef}
               data={messages}
               renderItem={renderMessage}
               keyExtractor={(item) => item.id}
+              onContentSizeChange={() => {
+                if (messages.length > 0) {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }
+              }}
+              onLayout={() => {
+                if (messages.length > 0) {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
               contentContainerStyle={{
                 paddingTop: 16,
                 paddingBottom: 24,
@@ -1067,9 +1112,9 @@ export default function RequestScreen() {
           )}
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <View className="px-3 pt-2 pb-3 border-t border-surface-container-highest bg-background">
+            <View className="px-3 pt-2 pb-6 border-t border-surface-container-highest bg-background">
               {chatIsClosed && (
                 <View className="mb-2 px-3 py-2 rounded-xl bg-surface-container-low">
                   <Text className="text-on-surface-variant text-xs">
@@ -1077,11 +1122,11 @@ export default function RequestScreen() {
                   </Text>
                 </View>
               )}
-              <View className="flex-row items-end gap-2">
+              <View className="flex-row items-end gap-2 mb-4">
                 <TextInput
                   value={draftMessage}
                   onChangeText={setDraftMessage}
-                  placeholder="Write a message"
+                  placeholder="Write a messageasdasdasd"
                   placeholderTextColor="#a79a96"
                   multiline
                   editable={

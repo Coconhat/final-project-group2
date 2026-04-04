@@ -1138,7 +1138,7 @@ export default function AdminScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <View className="flex-row items-center gap-2 px-4 py-3 border-t border-surface-container-highest">
+            <View className="flex-row items-center gap-2 px-4 py-3 border-t border-surface-container-highest mb-4">
               <TextInput
                 value={draftMessage}
                 onChangeText={setDraftMessage}

@@ -2,7 +2,13 @@ import BottomNav from "@/components/BottomNav";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -94,6 +100,9 @@ export default function ChatScreen() {
   const [unreadThreadIds, setUnreadThreadIds] = useState<
     Record<string, boolean>
   >({});
+  const [latestMessages, setLatestMessages] = useState<Record<string, string>>(
+    {},
+  );
 
   const [selectedRequest, setSelectedRequest] =
     useState<AdoptionRequest | null>(null);
@@ -107,6 +116,7 @@ export default function ChatScreen() {
   const requestStatusChannelRef = useRef<any>(null);
   const inboxChannelRef = useRef<any>(null);
   const autoOpenedRequestIdRef = useRef<string | null>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   const cleanupMessageChannel = useCallback(async () => {
     if (messageChannelRef.current) {
@@ -291,6 +301,24 @@ export default function ChatScreen() {
         }),
       );
 
+      const threadIds = nextThreads.map((t) => t.id);
+
+      if (threadIds.length > 0) {
+        const { data: msgs, error: msgError } = await supabase
+          .from("adoption_request_messages")
+          .select("request_id, message")
+          .in("request_id", threadIds)
+          .order("created_at", { ascending: false });
+
+        if (!msgError && msgs) {
+          const latestMap: Record<string, string> = {};
+          msgs.forEach((m) => {
+            if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
+          });
+          setLatestMessages(latestMap);
+        }
+      }
+
       setThreads(nextThreads);
       setUnreadThreadIds((current) => {
         const next = { ...current };
@@ -362,6 +390,11 @@ export default function ChatScreen() {
             if (!incoming?.request_id) {
               return;
             }
+
+            setLatestMessages((current) => ({
+              ...current,
+              [incoming.request_id]: incoming.message,
+            }));
 
             if (incoming.sender_id === currentUserId) {
               return;
@@ -667,13 +700,15 @@ export default function ChatScreen() {
                       </View>
                     </View>
                     <Text
+                      numberOfLines={1}
                       className={`text-xs mt-3 ${
                         hasUnread
                           ? "text-error font-bold"
                           : "text-on-surface-variant"
                       }`}
                     >
-                      {hasUnread ? "New message" : "Open conversation"}
+                      {latestMessages[thread.id] ||
+                        (hasUnread ? "New message" : "Open conversation")}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -719,9 +754,20 @@ export default function ChatScreen() {
               </View>
             ) : (
               <FlatList
+                ref={flatListRef}
                 data={messages}
                 renderItem={renderMessage}
                 keyExtractor={(item) => item.id}
+                onContentSizeChange={() => {
+                  if (messages.length > 0) {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                  }
+                }}
+                onLayout={() => {
+                  if (messages.length > 0) {
+                    flatListRef.current?.scrollToEnd({ animated: false });
+                  }
+                }}
                 contentContainerStyle={{
                   paddingTop: 16,
                   paddingBottom: 24,
@@ -744,10 +790,10 @@ export default function ChatScreen() {
             )}
 
             <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-              <View className="px-3 pt-2 pb-24 border-t border-surface-container-highest bg-background">
-                <View className="flex-row items-end gap-2">
+              <View className="px-3 pt-2 pb-32 border-t border-surface-container-highest bg-background">
+                <View className="flex-row items-end gap-2 mb-4">
                   <TextInput
                     value={draftMessage}
                     onChangeText={setDraftMessage}
@@ -755,7 +801,7 @@ export default function ChatScreen() {
                     placeholderTextColor="#a79a96"
                     multiline
                     editable={!sendingMessage && !chatTableMissing}
-                    className="flex-1 min-h-11 max-h-28 px-4 py-3 rounded-3xl bg-surface-container-low text-on-surface"
+                    className="flex-1 min-h-11 max-h-28 px-4 py-3 rounded-3xl bg-surface-container-low text-on-surface "
                   />
                   <TouchableOpacity
                     onPress={sendMessage}
