@@ -11,6 +11,13 @@ import {
   View,
 } from "react-native";
 
+const isCompletedStatus = (status: string | null | undefined) => {
+  const normalized = String(status || "").toLowerCase();
+  return ["completed", "approved", "accept", "accepted", "confirmed"].includes(
+    normalized,
+  );
+};
+
 export default function PetCardsGrid() {
   const [pets, setPets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,12 +27,42 @@ export default function PetCardsGrid() {
     useCallback(() => {
       const fetchPets = async () => {
         try {
-          const { data, error } = await supabase.from("pets").select("*");
-          if (error) {
-            console.error("Supabase error:", error);
+          const { data: petsData, error: petsError } = await supabase
+            .from("pets")
+            .select("*");
+
+          if (petsError) {
+            console.error("Supabase error:", petsError);
             return;
           }
-          setPets(data || []);
+
+          const { data: adoptedRows, error: adoptedError } = await supabase
+            .from("adoption_requests")
+            .select("pet_id, status");
+
+          if (adoptedError) {
+            console.error("Adoption status fetch error:", adoptedError);
+            setPets(petsData || []);
+            return;
+          }
+
+          const adoptedPetIds = new Set(
+            (
+              (adoptedRows as {
+                pet_id: string | null;
+                status?: string | null;
+              }[]) || []
+            )
+              .filter((row) => isCompletedStatus(row.status))
+              .map((row) => row.pet_id)
+              .filter((petId): petId is string => !!petId),
+          );
+
+          const filteredPets = (petsData || []).filter(
+            (pet) => !adoptedPetIds.has(String(pet.id)),
+          );
+
+          setPets(filteredPets);
         } catch (error) {
           console.error("Error fetching pets:", error);
         } finally {
