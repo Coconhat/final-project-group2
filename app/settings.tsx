@@ -15,7 +15,31 @@ import {
 export default function SettingsScreen() {
   const [pushEnabled, setPushEnabled] = React.useState(true);
   const [emailEnabled, setEmailEnabled] = React.useState(false);
+  const [isAdmin, setIsAdmin] = React.useState(false);
   const router = useRouter();
+
+  React.useEffect(() => {
+    const checkAdminRole = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      setIsAdmin(data?.role === "admin");
+    };
+
+    checkAdminRole();
+  }, []);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -66,6 +90,24 @@ export default function SettingsScreen() {
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#a79a96" />
             </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity
+                className="flex-row items-center justify-between p-4 border-t border-surface-container-highest"
+                onPress={() => router.push("/admin")}
+              >
+                <View className="flex-row items-center gap-3">
+                  <MaterialIcons
+                    name="admin-panel-settings"
+                    size={24}
+                    color="#6d5b56"
+                  />
+                  <Text className="text-on-surface font-medium text-base">
+                    Admin Panel
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#a79a96" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

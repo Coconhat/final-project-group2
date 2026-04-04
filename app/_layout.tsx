@@ -12,6 +12,7 @@ export default function RootLayout() {
       <Stack.Screen name="favorite" options={{ headerShown: false }} />
       <Stack.Screen name="request" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="admin" options={{ headerShown: false }} />
     </Stack>
   );
 }
