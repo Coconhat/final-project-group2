@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
+import { type RaceFilter } from "@/components/CategoryFilters";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +19,16 @@ const isCompletedStatus = (status: string | null | undefined) => {
   );
 };
 
-export default function PetCardsGrid() {
+const getPetRace = (pet: any) =>
+  String(pet?.race || pet?.pet_type || pet?.type || "").toLowerCase().trim();
+
+const isOtherRace = (race: string) => !["cat", "dog", "bird"].includes(race);
+
+type PetCardsGridProps = {
+  raceFilter?: RaceFilter;
+};
+
+export default function PetCardsGrid({ raceFilter = "all" }: PetCardsGridProps) {
   const [pets, setPets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -102,6 +112,26 @@ export default function PetCardsGrid() {
     }
   };
 
+  const filteredPets = useMemo(() => {
+    if (raceFilter === "all") {
+      return pets;
+    }
+
+    return pets.filter((pet) => {
+      const race = getPetRace(pet);
+
+      if (!race) {
+        return raceFilter === "other";
+      }
+
+      if (raceFilter === "other") {
+        return isOtherRace(race);
+      }
+
+      return race.includes(raceFilter);
+    });
+  }, [pets, raceFilter]);
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center py-10">
@@ -110,11 +140,11 @@ export default function PetCardsGrid() {
     );
   }
 
-  if (pets.length === 0) {
+  if (filteredPets.length === 0) {
     return (
       <View className="flex-1 items-center justify-center py-10">
         <Text className="text-on-surface-variant">
-          No pets available right now.
+          No pets available for this filter.
         </Text>
       </View>
     );
@@ -190,7 +220,7 @@ export default function PetCardsGrid() {
 
   return (
     <FlatList
-      data={pets}
+      data={filteredPets}
       keyExtractor={(item) => item.id.toString()}
       renderItem={renderItem}
       showsVerticalScrollIndicator={false}

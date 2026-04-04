@@ -722,7 +722,8 @@ export default function RequestScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (isAdmin === true ? filteredAdminRequests : requests).length === 0 ? (
+        ) : (isAdmin === true ? filteredAdminRequests : requests).length ===
+          0 ? (
           <View className="bg-surface-container-low rounded-xl p-8 items-center mt-4">
             <MaterialIcons name="pets" size={48} color="#e8e2d9" />
             <Text className="text-on-surface-variant text-center mt-4">
