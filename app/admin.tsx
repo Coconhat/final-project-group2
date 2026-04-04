@@ -14,6 +14,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
