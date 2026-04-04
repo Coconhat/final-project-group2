@@ -7,7 +7,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, animation: "none" }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="favorite" options={{ headerShown: false }} />
       <Stack.Screen name="chat" options={{ headerShown: false }} />

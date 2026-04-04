@@ -2,7 +2,13 @@
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -102,6 +108,9 @@ export default function RequestScreen() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
+    "pending",
+  );
   const [requestsError, setRequestsError] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<
     Record<string, Record<string, boolean>>
@@ -289,6 +298,22 @@ export default function RequestScreen() {
   const getStatusColor = (status: string) => {
     return STATUS_META[status?.toLowerCase()] || STATUS_META.pending;
   };
+
+  const filteredAdminRequests = useMemo(() => {
+    if (!isAdmin) {
+      return requests;
+    }
+
+    if (adminFilter === "pending") {
+      return requests.filter(
+        (request) => normalizeRequestStatus(request.status) === "pending",
+      );
+    }
+
+    return requests.filter(
+      (request) => normalizeRequestStatus(request.status) !== "pending",
+    );
+  }, [adminFilter, isAdmin, requests]);
 
   const loadMessages = async (requestId: string) => {
     setMessagesLoading(true);
@@ -606,6 +631,46 @@ export default function RequestScreen() {
           </Text>
         </View>
 
+        {isAdmin && (
+          <View className="mb-4 px-2">
+            <View className="bg-surface-container-low rounded-full p-1 flex-row">
+              <TouchableOpacity
+                onPress={() => setAdminFilter("pending")}
+                className={`flex-1 h-10 rounded-full items-center justify-center ${
+                  adminFilter === "pending" ? "bg-primary" : "bg-transparent"
+                }`}
+              >
+                <Text
+                  className={`font-bold ${
+                    adminFilter === "pending"
+                      ? "text-on-primary"
+                      : "text-on-surface"
+                  }`}
+                >
+                  Pending
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setAdminFilter("completed")}
+                className={`flex-1 h-10 rounded-full items-center justify-center ${
+                  adminFilter === "completed" ? "bg-primary" : "bg-transparent"
+                }`}
+              >
+                <Text
+                  className={`font-bold ${
+                    adminFilter === "completed"
+                      ? "text-on-primary"
+                      : "text-on-surface"
+                  }`}
+                >
+                  Completed
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {loading ? (
           <ActivityIndicator size="large" color="#fd8863" className="mt-10" />
         ) : !currentUserId ? (
@@ -626,12 +691,14 @@ export default function RequestScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : requests.length === 0 ? (
+        ) : (isAdmin ? filteredAdminRequests : requests).length === 0 ? (
           <View className="bg-surface-container-low rounded-xl p-8 items-center mt-4">
             <MaterialIcons name="pets" size={48} color="#e8e2d9" />
             <Text className="text-on-surface-variant text-center mt-4">
               {isAdmin
-                ? "No adoption requests yet."
+                ? adminFilter === "pending"
+                  ? "No pending requests right now."
+                  : "No completed requests yet."
                 : "You have not submitted any adoption requests yet."}
             </Text>
             {isAdmin && (
@@ -648,7 +715,7 @@ export default function RequestScreen() {
           </View>
         ) : isAdmin ? (
           <View className="space-y-3">
-            {requests.map((request) => {
+            {filteredAdminRequests.map((request) => {
               const statusConfig = getStatusColor(request.status);
               const done = checklistComplete(request.id);
               return (

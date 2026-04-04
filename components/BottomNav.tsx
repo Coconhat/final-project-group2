@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function BottomNav() {
@@ -89,6 +89,13 @@ export default function BottomNav() {
     return pathname === route || pathname.startsWith(`${route}/`);
   };
 
+  const onNavigate = (route: string) => {
+    if (isActiveRoute(route)) {
+      return;
+    }
+    router.replace(route as any);
+  };
+
   return (
     <SafeAreaView
       edges={["bottom"]}
@@ -98,12 +105,15 @@ export default function BottomNav() {
         {navItems.map((item) => {
           const active = isActiveRoute(item.route);
           return (
-            <TouchableOpacity
+            <Pressable
               key={item.route}
               className={`items-center justify-center px-5 py-2 rounded-full ${
                 active ? "bg-[#fd8863]/20" : ""
               }`}
-              onPress={() => router.push(item.route as any)}
+              onPress={() => onNavigate(item.route)}
+              style={({ pressed }) => [
+                { transform: [{ scale: pressed ? 0.97 : 1 }] },
+              ]}
             >
               <MaterialIcons
                 name={item.icon}
@@ -117,7 +127,7 @@ export default function BottomNav() {
               >
                 {item.label}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </View>
