@@ -5,6 +5,8 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  FlatList,
   Image,
   ScrollView,
   Text,
@@ -20,6 +22,7 @@ export default function PetDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
     const fetchPetDetails = async () => {
@@ -101,16 +104,64 @@ export default function PetDetailsScreen() {
     );
   }
 
+  // Extract images correctly whether stored as array or comma-separated string
+  const images = pet.image_urls?.length
+    ? pet.image_urls
+    : pet.image_url?.includes(",")
+      ? pet.image_url.split(",")
+      : [pet.image_url || pet.imageUrl].filter(Boolean);
+
   return (
     <View className="flex-1 bg-background">
       <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
-        {/* Hero Image */}
-        <View className="h-96 relative">
-          <Image
-            source={{ uri: pet.image_url || pet.imageUrl }}
-            className="w-full h-full"
-            resizeMode="cover"
-          />
+        {/* Hero Image Carousel */}
+        <View className="h-[400px] relative bg-surface-container-low">
+          {images.length > 0 ? (
+            <FlatList
+              data={images}
+              keyExtractor={(item, index) => index.toString()}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={(e) => {
+                const x = e.nativeEvent.contentOffset.x;
+                const windowWidth = Dimensions.get("window").width;
+                // use Math.round to gracefully swap index at 50% scroll
+                setCurrentImageIndex(Math.round(x / windowWidth));
+              }}
+              scrollEventThrottle={16}
+              renderItem={({ item }) => (
+                <Image
+                  source={{ uri: item }}
+                  style={{ width: Dimensions.get("window").width, height: 400 }}
+                  resizeMode="cover"
+                />
+              )}
+            />
+          ) : (
+            <View className="flex-1 items-center justify-center">
+              <MaterialIcons name="pets" size={64} color="#a79a96" />
+            </View>
+          )}
+
+          {/* Pagination Indicators */}
+          {images.length > 1 && (
+            <View className="absolute bottom-12 left-0 right-0 flex-row justify-center gap-2">
+              {images.map((_, index) => (
+                <View
+                  key={index}
+                  style={{
+                    height: 8,
+                    width: currentImageIndex === index ? 24 : 8,
+                    borderRadius: 4,
+                    backgroundColor: "white",
+                    opacity: currentImageIndex === index ? 1 : 0.6,
+                  }}
+                />
+              ))}
+            </View>
+          )}
+
           {/* Back Button */}
           <SafeAreaView className="absolute top-0 left-0 w-full px-4 pt-4">
             <TouchableOpacity

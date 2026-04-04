@@ -155,11 +155,20 @@ export default function PetCardsGrid({
   }
 
   const renderItem = ({ item }: { item: any }) => {
+    // If it's a comma-separated string, take the first one
+    const parsedImage = item.image_url?.includes(",")
+      ? item.image_url.split(",")[0]
+      : item.image_url || item.imageUrl;
+
+    const defaultImage = item.image_urls?.length
+      ? item.image_urls[0]
+      : parsedImage;
+
     return (
       <View className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden mb-6">
         <View className="h-64 relative">
           <Image
-            source={{ uri: item.image_url || item.imageUrl }}
+            source={{ uri: defaultImage }}
             className="w-full h-full"
             resizeMode="cover"
           />

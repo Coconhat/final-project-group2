@@ -7,16 +7,18 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  FlatList,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   ScrollView,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -39,7 +41,7 @@ type PetFormState = {
   petType: string;
   age: string;
   breed: string;
-  imageUrl: string;
+  imageUrls: string[]; // Use an array for multiple pictures
   gender: string;
   description: string;
   tagsCsv: string;
@@ -76,7 +78,7 @@ const emptyPetForm: PetFormState = {
   petType: "",
   age: "",
   breed: "",
-  imageUrl: "",
+  imageUrls: [],
   gender: "",
   description: "",
   tagsCsv: "",
@@ -105,6 +107,7 @@ export default function AdminScreen() {
   const [chatTableMissing, setChatTableMissing] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [uploadImageIndex, setUploadImageIndex] = useState(0);
   const messageChannelRef = useRef<any>(null);
 
   const ensureChecklistState = (items: AdoptionRequest[]) => {
@@ -198,7 +201,7 @@ export default function AdminScreen() {
     }, [loadData]),
   );
 
-  const updateForm = (key: keyof PetFormState, value: string | boolean) => {
+  const updateForm = (key: keyof PetFormState, value: any) => {
     setPetForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -206,6 +209,7 @@ export default function AdminScreen() {
     setPetForm(emptyPetForm);
     setShowPetTypeOptions(false);
     setEditingPetId(null);
+    setUploadImageIndex(0);
   };
 
   const parseTags = (input: string) =>
@@ -236,57 +240,71 @@ export default function AdminScreen() {
       }
 
       const pickerResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        mediaTypes: ["images"],
+        allowsEditing: false, // Turn off editing to allow picking multiple (if EXPO supported it here) but we can do it one by one or via allowsMultipleSelection
+        allowsMultipleSelection: true,
         quality: 0.8,
       });
 
-      if (pickerResult.canceled || !pickerResult.assets?.[0]) {
+      if (
+        pickerResult.canceled ||
+        !pickerResult.assets ||
+        pickerResult.assets.length === 0
+      ) {
         return;
       }
 
       setUploadingImage(true);
-      const asset = pickerResult.assets[0];
-      const rawExt =
-        asset.fileName?.split(".").pop()?.toLowerCase() ||
-        asset.uri.split(".").pop()?.split("?")[0]?.toLowerCase() ||
-        "jpg";
-      const ext = ["jpg", "jpeg", "png", "webp"].includes(rawExt)
-        ? rawExt
-        : "jpg";
-      const storagePath = `pets/${user.id}-${Date.now()}.${ext}`;
 
-      const fileResponse = await fetch(asset.uri);
-      const fileBlob = await fileResponse.blob();
+      const uploadedUrls: string[] = [];
 
-      const { error: uploadError } = await supabase.storage
-        .from(PET_IMAGE_BUCKET)
-        .upload(storagePath, fileBlob, {
-          contentType: asset.mimeType || `image/${ext}`,
-          upsert: true,
-        });
+      for (const asset of pickerResult.assets) {
+        const rawExt =
+          asset.fileName?.split(".").pop()?.toLowerCase() ||
+          asset.uri.split(".").pop()?.split("?")[0]?.toLowerCase() ||
+          "jpg";
+        const ext = ["jpg", "jpeg", "png", "webp"].includes(rawExt)
+          ? rawExt
+          : "jpg";
+        const storagePath = `pets/${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
-      if (uploadError) {
-        const uploadErrorCode = (uploadError as any)?.code;
-        const isRlsError =
-          uploadErrorCode === "42501" ||
-          uploadError.message?.toLowerCase().includes("row-level security");
-        Alert.alert(
-          "Upload failed",
-          isRlsError
-            ? "Storage permissions blocked upload. Run the SQL in schema/admin_pets_setup.sql to create bucket policies for pet-images."
-            : uploadError.message ||
-                "Could not upload image. Check bucket name and permissions.",
-        );
-        return;
+        const fileResponse = await fetch(asset.uri);
+        const fileBlob = await fileResponse.blob();
+
+        const { error: uploadError } = await supabase.storage
+          .from(PET_IMAGE_BUCKET)
+          .upload(storagePath, fileBlob, {
+            contentType: asset.mimeType || `image/${ext}`,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          const uploadErrorCode = (uploadError as any)?.code;
+          const isRlsError =
+            uploadErrorCode === "42501" ||
+            uploadError.message?.toLowerCase().includes("row-level security");
+          Alert.alert(
+            "Upload failed",
+            isRlsError
+              ? "Storage permissions blocked upload. Check bucket policies for pet-images."
+              : uploadError.message || "Could not upload image.",
+          );
+          setUploadingImage(false);
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from(PET_IMAGE_BUCKET)
+          .getPublicUrl(storagePath);
+
+        uploadedUrls.push(publicUrlData.publicUrl);
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from(PET_IMAGE_BUCKET)
-        .getPublicUrl(storagePath);
-
-      updateForm("imageUrl", publicUrlData.publicUrl);
-      Alert.alert("Image uploaded", "Pet image uploaded successfully.");
+      updateForm("imageUrls", [...petForm.imageUrls, ...uploadedUrls]);
+      Alert.alert(
+        "Images uploaded",
+        `${uploadedUrls.length} images added successfully.`,
+      );
     } catch (error: any) {
       Alert.alert(
         "Upload error",
@@ -303,11 +321,11 @@ export default function AdminScreen() {
       !petForm.petType ||
       !petForm.breed ||
       !petForm.age ||
-      !petForm.imageUrl
+      petForm.imageUrls.length === 0
     ) {
       Alert.alert(
         "Missing fields",
-        "Name, pet type, breed, age and image are required.",
+        "Name, pet type, breed, age and at least one image are required.",
       );
       return;
     }
@@ -317,7 +335,7 @@ export default function AdminScreen() {
       age: petForm.age.trim(),
       breed: petForm.breed.trim(),
       race: petForm.petType,
-      image_url: petForm.imageUrl.trim(),
+      image_url: petForm.imageUrls.join(","), // Store array as CSV in the existing column
     };
 
     const payload: Record<string, any> = {
@@ -360,12 +378,17 @@ export default function AdminScreen() {
 
   const handleEditPet = (pet: any) => {
     setEditingPetId(String(pet.id));
+    setUploadImageIndex(0);
+
+    // Parse array properly from comma-separated string
+    const parsedImageUrls = pet.image_url ? pet.image_url.split(",") : [];
+
     setPetForm({
       name: pet.name || "",
       petType: pet.pet_type || pet.race || pet.type || "",
       age: pet.age || "",
       breed: pet.breed || "",
-      imageUrl: pet.image_url || pet.imageUrl || "",
+      imageUrls: parsedImageUrls,
       gender: pet.gender || "",
       description: pet.description || "",
       tagsCsv: Array.isArray(pet.tags) ? pet.tags.join(", ") : "",
@@ -772,18 +795,59 @@ export default function AdminScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {!!petForm.imageUrl && (
+              {petForm.imageUrls.length > 0 && (
                 <View className="mt-3">
-                  <Image
-                    source={{ uri: petForm.imageUrl }}
-                    className="w-full h-40 rounded-xl"
-                    resizeMode="cover"
-                  />
-                  <Text
-                    className="text-on-surface-variant text-xs mt-2"
-                    numberOfLines={1}
-                  >
-                    {petForm.imageUrl}
+                  <View className="rounded-xl overflow-hidden relative border border-surface-container-highest">
+                    <FlatList
+                      data={petForm.imageUrls}
+                      keyExtractor={(_, index) => index.toString()}
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      className="w-full h-48"
+                      onScroll={(e) => {
+                        const x = e.nativeEvent.contentOffset.x;
+                        const w = e.nativeEvent.layoutMeasurement.width;
+                        setUploadImageIndex(Math.round(x / w));
+                      }}
+                      scrollEventThrottle={16}
+                      renderItem={({ item }) => (
+                        <Image
+                          source={{ uri: item }}
+                          // Assuming fixed width approx container width, let's use Dimensions or just rely on flex
+                          style={{
+                            width: Dimensions.get("window").width - 64,
+                            height: 192,
+                          }}
+                          resizeMode="cover"
+                        />
+                      )}
+                    />
+
+                    {petForm.imageUrls.length > 1 && (
+                      <View className="absolute bottom-2 left-0 right-0 flex-row justify-center gap-1.5">
+                        {petForm.imageUrls.map((_, index) => (
+                          <View
+                            key={index}
+                            style={{
+                              height: 6,
+                              width: uploadImageIndex === index ? 16 : 6,
+                              borderRadius: 3,
+                              backgroundColor:
+                                uploadImageIndex === index
+                                  ? "#fd8863"
+                                  : "white",
+                              opacity: uploadImageIndex === index ? 1 : 0.7,
+                            }}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-on-surface-variant text-xs mt-2 text-center">
+                    {petForm.imageUrls.length} image
+                    {petForm.imageUrls.length > 1 ? "s" : ""} selected. Swipe to
+                    view.
                   </Text>
                 </View>
               )}

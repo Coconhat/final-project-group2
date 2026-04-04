@@ -56,64 +56,75 @@ export default function FavoritesScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <View className="bg-surface-container-highest rounded-xl overflow-hidden shadow-none mb-6">
-      <View className="h-64 relative overflow-hidden">
-        <Image
-          source={{ uri: item.image_url || item.imageUrl }}
-          className="w-full h-full"
-          resizeMode="cover"
-        />
-        <TouchableOpacity
-          className="absolute top-4 right-4 bg-white/90 p-3 rounded-full justify-center items-center"
-          onPress={() => toggleFavorite(item.id)}
-        >
-          <MaterialIcons name="favorite" size={24} color="#a04223" />
-        </TouchableOpacity>
-      </View>
-      <View className="p-8">
-        <View className="flex-row gap-2 mb-4">
-          {item.tags?.map((tag: string, idx: number) => (
-            <View
-              key={idx}
-              className="px-3 py-1 bg-surface-container rounded-full"
-            >
-              <Text className="text-primary text-[10px] font-bold uppercase">
-                {tag}
-              </Text>
-            </View>
-          ))}
-          {item.vaccinated && (
-            <View className="px-3 py-1 bg-surface-container rounded-full">
-              <Text className="text-primary text-[10px] font-bold uppercase">
-                Vaccinated
-              </Text>
-            </View>
-          )}
+  const renderItem = ({ item }: { item: any }) => {
+    // Check if comma-separated
+    const parsedImage = item.image_url?.includes(",")
+      ? item.image_url.split(",")[0]
+      : item.image_url || item.imageUrl;
+
+    const defaultImage = item.image_urls?.length
+      ? item.image_urls[0]
+      : parsedImage;
+
+    return (
+      <View className="bg-surface-container-highest rounded-xl overflow-hidden shadow-none mb-6">
+        <View className="h-64 relative overflow-hidden">
+          <Image
+            source={{ uri: defaultImage }}
+            className="w-full h-full"
+            resizeMode="cover"
+          />
+          <TouchableOpacity
+            className="absolute top-4 right-4 bg-white/90 p-3 rounded-full justify-center items-center"
+            onPress={() => toggleFavorite(item.id)}
+          >
+            <MaterialIcons name="favorite" size={24} color="#a04223" />
+          </TouchableOpacity>
         </View>
-        <View className="flex-row justify-between items-start mb-2">
-          <Text className="font-headline text-2xl font-bold text-on-surface">
-            {item.name}
-          </Text>
-          {item.size && (
-            <Text className="text-secondary font-bold text-sm">
-              {item.size}
+        <View className="p-8">
+          <View className="flex-row gap-2 mb-4">
+            {item.tags?.map((tag: string, idx: number) => (
+              <View
+                key={idx}
+                className="px-3 py-1 bg-surface-container rounded-full"
+              >
+                <Text className="text-primary text-[10px] font-bold uppercase">
+                  {tag}
+                </Text>
+              </View>
+            ))}
+            {item.vaccinated && (
+              <View className="px-3 py-1 bg-surface-container rounded-full">
+                <Text className="text-primary text-[10px] font-bold uppercase">
+                  Vaccinated
+                </Text>
+              </View>
+            )}
+          </View>
+          <View className="flex-row justify-between items-start mb-2">
+            <Text className="font-headline text-2xl font-bold text-on-surface">
+              {item.name}
             </Text>
-          )}
+            {item.size && (
+              <Text className="text-secondary font-bold text-sm">
+                {item.size}
+              </Text>
+            )}
+          </View>
+          <Text className="font-body text-on-surface-variant mb-6 text-sm leading-relaxed">
+            {item.description || `${item.breed} � ${item.age}`}
+          </Text>
+          <TouchableOpacity
+            className="flex-row items-center gap-2 mt-auto"
+            onPress={() => router.push(`/pet/${item.id}`)}
+          >
+            <Text className="text-primary font-bold text-sm">Adopt Me</Text>
+            <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
+          </TouchableOpacity>
         </View>
-        <Text className="font-body text-on-surface-variant mb-6 text-sm leading-relaxed">
-          {item.description || `${item.breed} � ${item.age}`}
-        </Text>
-        <TouchableOpacity
-          className="flex-row items-center gap-2 mt-auto"
-          onPress={() => router.push(`/pet/${item.id}`)}
-        >
-          <Text className="text-primary font-bold text-sm">Adopt Me</Text>
-          <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
-        </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View className="flex-1 bg-background pb-12">
