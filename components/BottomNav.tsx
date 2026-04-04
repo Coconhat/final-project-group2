@@ -5,10 +5,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+let cachedIsAdmin: boolean | null = null;
+
 export default function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(cachedIsAdmin);
 
   useEffect(() => {
     const loadRole = async () => {
@@ -17,8 +19,21 @@ export default function BottomNav() {
       } = await supabase.auth.getUser();
 
       if (!user) {
+        cachedIsAdmin = false;
         setIsAdmin(false);
         return;
+      }
+
+      const roleFromMetadata =
+        typeof user.user_metadata?.role === "string"
+          ? String(user.user_metadata.role).toLowerCase()
+          : null;
+
+      // Apply cached/metadata role immediately to avoid rendering the wrong tab briefly.
+      if (roleFromMetadata) {
+        const metadataIsAdmin = roleFromMetadata === "admin";
+        cachedIsAdmin = metadataIsAdmin;
+        setIsAdmin(metadataIsAdmin);
       }
 
       const { data: profile } = await supabase
@@ -29,12 +44,11 @@ export default function BottomNav() {
 
       const roleFromProfile =
         typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-      const roleFromMetadata =
-        typeof user.user_metadata?.role === "string"
-          ? String(user.user_metadata.role).toLowerCase()
-          : null;
+      const resolvedIsAdmin =
+        roleFromProfile === "admin" || roleFromMetadata === "admin";
 
-      setIsAdmin(roleFromProfile === "admin" || roleFromMetadata === "admin");
+      cachedIsAdmin = resolvedIsAdmin;
+      setIsAdmin(resolvedIsAdmin);
     };
 
     void loadRole();
@@ -57,7 +71,7 @@ export default function BottomNav() {
         route: "/",
         icon: "pets" as const,
       },
-      isAdmin
+      isAdmin === true
         ? {
             label: "Chat",
             route: "/chat",
@@ -81,6 +95,17 @@ export default function BottomNav() {
     ],
     [isAdmin],
   );
+
+  if (isAdmin === null) {
+    return (
+      <SafeAreaView
+        edges={["bottom"]}
+        className="absolute bottom-0 w-full bg-[#fff8f6]/95 border-t border-[#3e2f2b]/5"
+      >
+        <View className="h-[74px]" />
+      </SafeAreaView>
+    );
+  }
 
   const isActiveRoute = (route: string) => {
     if (route === "/") {

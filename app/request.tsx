@@ -102,12 +102,16 @@ const checklistItems = [
   "Pet health and fit confirmed",
 ];
 
+let cachedIsAdminForRequest: boolean | null = null;
+
 export default function RequestScreen() {
   const router = useRouter();
   const [requests, setRequests] = useState<AdoptionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(
+    cachedIsAdminForRequest,
+  );
   const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
     "pending",
   );
@@ -172,12 +176,25 @@ export default function RequestScreen() {
 
       if (!user) {
         setCurrentUserId(null);
+        cachedIsAdminForRequest = false;
+        setIsAdmin(false);
         setRequests([]);
         setLoading(false);
         return;
       }
 
       setCurrentUserId(user.id);
+
+      const roleFromMetadata =
+        typeof user.user_metadata?.role === "string"
+          ? String(user.user_metadata.role).toLowerCase()
+          : null;
+
+      if (roleFromMetadata) {
+        const metadataIsAdmin = roleFromMetadata === "admin";
+        cachedIsAdminForRequest = metadataIsAdmin;
+        setIsAdmin(metadataIsAdmin);
+      }
 
       const { data: profile, error: profileError } = await supabase
         .from("users")
@@ -187,14 +204,12 @@ export default function RequestScreen() {
 
       const roleFromProfile =
         typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-      const roleFromMetadata =
-        typeof user.user_metadata?.role === "string"
-          ? String(user.user_metadata.role).toLowerCase()
-          : null;
-
       const admin =
-        !profileError &&
-        (roleFromProfile === "admin" || roleFromMetadata === "admin");
+        roleFromProfile === "admin" ||
+        roleFromMetadata === "admin" ||
+        (!!profileError && cachedIsAdminForRequest === true);
+
+      cachedIsAdminForRequest = admin;
       setIsAdmin(admin);
 
       if (admin) {
@@ -229,6 +244,10 @@ export default function RequestScreen() {
       }
     } catch (error: any) {
       console.error("Error fetching requests:", error);
+      if (cachedIsAdminForRequest === null) {
+        cachedIsAdminForRequest = false;
+        setIsAdmin(false);
+      }
       setRequests([]);
       setRequestsError(error?.message || "Failed to load adoption requests.");
     } finally {
@@ -250,6 +269,10 @@ export default function RequestScreen() {
         return;
       }
 
+      if (isAdmin === null) {
+        return;
+      }
+
       const channelName = `request-status-${currentUserId}-${Date.now()}`;
       const channel = supabase
         .channel(channelName)
@@ -259,7 +282,9 @@ export default function RequestScreen() {
             event: "UPDATE",
             schema: "public",
             table: "adoption_requests",
-            ...(isAdmin ? {} : { filter: `user_id=eq.${currentUserId}` }),
+            ...(isAdmin === true
+              ? {}
+              : { filter: `user_id=eq.${currentUserId}` }),
           },
           (payload) => {
             const incoming = payload.new as AdoptionRequest;
@@ -300,7 +325,7 @@ export default function RequestScreen() {
   };
 
   const filteredAdminRequests = useMemo(() => {
-    if (!isAdmin) {
+    if (isAdmin !== true) {
       return requests;
     }
 
@@ -622,16 +647,22 @@ export default function RequestScreen() {
       <ScrollView contentContainerClassName="pt-24 pb-32 px-4 max-w-2xl mx-auto min-h-screen">
         <View className="mb-8 px-2">
           <Text className="font-headline font-extrabold text-3xl text-on-background leading-tight">
-            {isAdmin ? "Review Requests" : "Your Requests"}
+            {isAdmin === true
+              ? "Review Requests"
+              : isAdmin === false
+                ? "Your Requests"
+                : "Requests"}
           </Text>
           <Text className="text-on-surface-variant mt-2 text-sm">
-            {isAdmin
+            {isAdmin === true
               ? "Check applications and complete the checklist before giving a verdict."
-              : "Track your applications and chat live with the adoption team."}
+              : isAdmin === false
+                ? "Track your applications and chat live with the adoption team."
+                : "Loading your request experience..."}
           </Text>
         </View>
 
-        {isAdmin && (
+        {isAdmin === true && (
           <View className="mb-4 px-2">
             <View className="bg-surface-container-low rounded-full p-1 flex-row">
               <TouchableOpacity
@@ -691,17 +722,17 @@ export default function RequestScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (isAdmin ? filteredAdminRequests : requests).length === 0 ? (
+        ) : (isAdmin === true ? filteredAdminRequests : requests).length === 0 ? (
           <View className="bg-surface-container-low rounded-xl p-8 items-center mt-4">
             <MaterialIcons name="pets" size={48} color="#e8e2d9" />
             <Text className="text-on-surface-variant text-center mt-4">
-              {isAdmin
+              {isAdmin === true
                 ? adminFilter === "pending"
                   ? "No pending requests right now."
                   : "No completed requests yet."
                 : "You have not submitted any adoption requests yet."}
             </Text>
-            {isAdmin && (
+            {isAdmin === true && (
               <Text className="text-on-surface-variant text-center mt-2 text-xs">
                 If you know there are submissions, check adoption_requests
                 select policy for admins.
@@ -713,7 +744,7 @@ export default function RequestScreen() {
               </Text>
             )}
           </View>
-        ) : isAdmin ? (
+        ) : isAdmin === true ? (
           <View className="space-y-3">
             {filteredAdminRequests.map((request) => {
               const statusConfig = getStatusColor(request.status);
