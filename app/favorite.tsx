@@ -13,6 +13,7 @@ import {
 
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/header";
+import { getPrimaryPetImageUrl } from "@/lib/petImages";
 
 export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -57,23 +58,22 @@ export default function FavoritesScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    // Check if comma-separated
-    const parsedImage = item.image_url?.includes(",")
-      ? item.image_url.split(",")[0]
-      : item.image_url || item.imageUrl;
-
-    const defaultImage = item.image_urls?.length
-      ? item.image_urls[0]
-      : parsedImage;
+    const defaultImage = getPrimaryPetImageUrl(item);
 
     return (
       <View className="bg-surface-container-highest rounded-xl overflow-hidden shadow-none mb-6">
         <View className="h-64 relative overflow-hidden">
-          <Image
-            source={{ uri: defaultImage }}
-            className="w-full h-full"
-            resizeMode="cover"
-          />
+          {defaultImage ? (
+            <Image
+              source={{ uri: defaultImage }}
+              className="w-full h-full"
+              resizeMode="cover"
+            />
+          ) : (
+            <View className="w-full h-full items-center justify-center bg-surface-container-low">
+              <MaterialIcons name="pets" size={48} color="#a79a96" />
+            </View>
+          )}
           <TouchableOpacity
             className="absolute top-4 right-4 bg-white/90 p-3 rounded-full justify-center items-center"
             onPress={() => toggleFavorite(item.id)}

@@ -1,3 +1,4 @@
+import { getPetImageUrls } from "@/lib/petImages";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -40,7 +41,7 @@ export default function PetDetailsScreen() {
         // Check if current user has already requested this pet
         const { data: authData } = await supabase.auth.getUser();
         if (authData.user) {
-          const { data: requestData, error: requestError } = await supabase
+          const { data: requestData } = await supabase
             .from("adoption_requests")
             .select("id")
             .eq("pet_id", String(id))
@@ -104,12 +105,7 @@ export default function PetDetailsScreen() {
     );
   }
 
-  // Extract images correctly whether stored as array or comma-separated string
-  const images = pet.image_urls?.length
-    ? pet.image_urls
-    : pet.image_url?.includes(",")
-      ? pet.image_url.split(",")
-      : [pet.image_url || pet.imageUrl].filter(Boolean);
+  const images = getPetImageUrls(pet);
 
   return (
     <View className="flex-1 bg-background">

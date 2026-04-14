@@ -1,4 +1,5 @@
 import { type RaceFilter } from "@/components/CategoryFilters";
+import { getPrimaryPetImageUrl } from "@/lib/petImages";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -155,23 +156,22 @@ export default function PetCardsGrid({
   }
 
   const renderItem = ({ item }: { item: any }) => {
-    // If it's a comma-separated string, take the first one
-    const parsedImage = item.image_url?.includes(",")
-      ? item.image_url.split(",")[0]
-      : item.image_url || item.imageUrl;
-
-    const defaultImage = item.image_urls?.length
-      ? item.image_urls[0]
-      : parsedImage;
+    const defaultImage = getPrimaryPetImageUrl(item);
 
     return (
       <View className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden mb-6">
         <View className="h-64 relative">
-          <Image
-            source={{ uri: defaultImage }}
-            className="w-full h-full"
-            resizeMode="cover"
-          />
+          {defaultImage ? (
+            <Image
+              source={{ uri: defaultImage }}
+              className="w-full h-full"
+              resizeMode="cover"
+            />
+          ) : (
+            <View className="w-full h-full items-center justify-center bg-surface-container-low">
+              <MaterialIcons name="pets" size={48} color="#a79a96" />
+            </View>
+          )}
           <TouchableOpacity
             className="absolute top-4 right-4 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center"
             onPress={() => {

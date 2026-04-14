@@ -10,12 +10,22 @@ export default function Header() {
   const router = useRouter();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
+    const loadUser = async () => {
+      try {
+        const {
+          data: { user: loadedUser },
+        } = await supabase.auth.getUser();
+        setUser(loadedUser);
+      } catch (error) {
+        console.warn("[Header] Failed to load auth user", error);
+        setUser(null);
+      }
+    };
+
+    void loadUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setUser(session?.user || null);
       },
     );

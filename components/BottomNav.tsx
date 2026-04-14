@@ -14,41 +14,47 @@ export default function BottomNav() {
 
   useEffect(() => {
     const loadRole = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) {
+        if (!user) {
+          cachedIsAdmin = false;
+          setIsAdmin(false);
+          return;
+        }
+
+        const roleFromMetadata =
+          typeof user.user_metadata?.role === "string"
+            ? String(user.user_metadata.role).toLowerCase()
+            : null;
+
+        // Apply cached/metadata role immediately to avoid rendering the wrong tab briefly.
+        if (roleFromMetadata) {
+          const metadataIsAdmin = roleFromMetadata === "admin";
+          cachedIsAdmin = metadataIsAdmin;
+          setIsAdmin(metadataIsAdmin);
+        }
+
+        const { data: profile } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const roleFromProfile =
+          typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
+        const resolvedIsAdmin =
+          roleFromProfile === "admin" || roleFromMetadata === "admin";
+
+        cachedIsAdmin = resolvedIsAdmin;
+        setIsAdmin(resolvedIsAdmin);
+      } catch (error) {
+        console.warn("[BottomNav] Failed to load role", error);
         cachedIsAdmin = false;
         setIsAdmin(false);
-        return;
       }
-
-      const roleFromMetadata =
-        typeof user.user_metadata?.role === "string"
-          ? String(user.user_metadata.role).toLowerCase()
-          : null;
-
-      // Apply cached/metadata role immediately to avoid rendering the wrong tab briefly.
-      if (roleFromMetadata) {
-        const metadataIsAdmin = roleFromMetadata === "admin";
-        cachedIsAdmin = metadataIsAdmin;
-        setIsAdmin(metadataIsAdmin);
-      }
-
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const roleFromProfile =
-        typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-      const resolvedIsAdmin =
-        roleFromProfile === "admin" || roleFromMetadata === "admin";
-
-      cachedIsAdmin = resolvedIsAdmin;
-      setIsAdmin(resolvedIsAdmin);
     };
 
     void loadRole();

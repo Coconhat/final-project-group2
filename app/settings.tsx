@@ -23,35 +23,48 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) {
+        if (!user) {
+          setIsAdmin(false);
+          setUserEmail(null);
+          return;
+        }
+
+        setUserEmail(user.email ?? null);
+
+        const { data } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        setIsAdmin(data?.role === "admin");
+      } catch (error) {
+        console.warn("[Settings] Failed to load profile", error);
         setIsAdmin(false);
         setUserEmail(null);
-        return;
       }
-
-      setUserEmail(user.email ?? null);
-
-      const { data } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      setIsAdmin(data?.role === "admin");
     };
 
-    loadProfile();
-    checkPushStatus();
+    void loadProfile();
+    void checkPushStatus();
   }, []);
 
   const checkPushStatus = async () => {
     if (Platform.OS === "web") return;
-    const { status } = await Notifications.getPermissionsAsync();
-    setPushEnabled(status === "granted");
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setPushEnabled(status === "granted");
+    } catch (error) {
+      console.warn(
+        "[Settings] Failed to check notification permissions",
+        error,
+      );
+    }
   };
 
   const handlePushToggle = async (value: boolean) => {

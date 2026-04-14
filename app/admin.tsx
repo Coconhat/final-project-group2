@@ -85,6 +85,28 @@ const emptyPetForm: PetFormState = {
   vaccinated: false,
 };
 
+const readUriAsArrayBuffer = async (uri: string): Promise<ArrayBuffer> => {
+  try {
+    const response = await fetch(uri);
+    return await response.arrayBuffer();
+  } catch {
+    return await new Promise<ArrayBuffer>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onerror = () => reject(new Error("Could not read selected image."));
+      xhr.onload = () => {
+        if (xhr.response) {
+          resolve(xhr.response as ArrayBuffer);
+          return;
+        }
+        reject(new Error("Selected image returned empty data."));
+      };
+      xhr.responseType = "arraybuffer";
+      xhr.open("GET", uri, true);
+      xhr.send();
+    });
+  }
+};
+
 export default function AdminScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -243,6 +265,8 @@ export default function AdminScreen() {
         mediaTypes: ["images"],
         allowsEditing: false, // Turn off editing to allow picking multiple (if EXPO supported it here) but we can do it one by one or via allowsMultipleSelection
         allowsMultipleSelection: true,
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
         quality: 0.8,
       });
 
@@ -257,23 +281,23 @@ export default function AdminScreen() {
       setUploadingImage(true);
 
       const uploadedUrls: string[] = [];
+      const uploadedPaths: string[] = [];
 
       for (const asset of pickerResult.assets) {
         const rawExt =
           asset.fileName?.split(".").pop()?.toLowerCase() ||
           asset.uri.split(".").pop()?.split("?")[0]?.toLowerCase() ||
           "jpg";
-        const ext = ["jpg", "jpeg", "png", "webp"].includes(rawExt)
+        const ext = ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(rawExt)
           ? rawExt
           : "jpg";
         const storagePath = `pets/${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
-        const fileResponse = await fetch(asset.uri);
-        const fileBlob = await fileResponse.blob();
+        const fileData = await readUriAsArrayBuffer(asset.uri);
 
         const { error: uploadError } = await supabase.storage
           .from(PET_IMAGE_BUCKET)
-          .upload(storagePath, fileBlob, {
+          .upload(storagePath, fileData, {
             contentType: asset.mimeType || `image/${ext}`,
             upsert: true,
           });
@@ -297,13 +321,14 @@ export default function AdminScreen() {
           .from(PET_IMAGE_BUCKET)
           .getPublicUrl(storagePath);
 
+        uploadedPaths.push(storagePath);
         uploadedUrls.push(publicUrlData.publicUrl);
       }
 
       updateForm("imageUrls", [...petForm.imageUrls, ...uploadedUrls]);
       Alert.alert(
         "Images uploaded",
-        `${uploadedUrls.length} images added successfully.`,
+        `${uploadedUrls.length} image(s) uploaded to ${PET_IMAGE_BUCKET}/\n${uploadedPaths.join("\n")}`,
       );
     } catch (error: any) {
       Alert.alert(
