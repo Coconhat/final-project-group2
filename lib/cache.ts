@@ -20,7 +20,9 @@ const namespacedKey = (key: string) => `${CACHE_PREFIX}${key}`;
 
 const isExpired = (entry: CacheEntry<unknown>) => entry.expiresAt <= Date.now();
 
-const parseStoredEntry = (rawValue: string | null): CacheEntry<unknown> | null => {
+const parseStoredEntry = (
+  rawValue: string | null,
+): CacheEntry<unknown> | null => {
   if (!rawValue) {
     return null;
   }
@@ -41,7 +43,9 @@ const parseStoredEntry = (rawValue: string | null): CacheEntry<unknown> | null =
   }
 };
 
-const getFromStorage = async (key: string): Promise<CacheEntry<unknown> | null> => {
+const getFromStorage = async (
+  key: string,
+): Promise<CacheEntry<unknown> | null> => {
   const fullKey = namespacedKey(key);
 
   try {

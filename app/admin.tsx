@@ -1,8 +1,5 @@
 import BottomNav from "@/components/BottomNav";
-import {
-  getOrSetCachedValue,
-  invalidateCachedPrefix,
-} from "@/lib/cache";
+import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -226,7 +223,10 @@ export default function AdminScreen() {
             { data: petData, error: petError },
             { data: requestData, error: requestError },
           ] = await Promise.all([
-            supabase.from("pets").select("*").order("name", { ascending: true }),
+            supabase
+              .from("pets")
+              .select("*")
+              .order("name", { ascending: true }),
             supabase
               .from("adoption_requests")
               .select("*")

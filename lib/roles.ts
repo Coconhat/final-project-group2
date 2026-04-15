@@ -30,7 +30,9 @@ export const resolveIsAdmin = async (
         .eq("id", user.id)
         .maybeSingle();
 
-      return typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
+      return typeof profile?.role === "string"
+        ? profile.role.toLowerCase()
+        : null;
     },
     { ttlMs: ROLE_CACHE_TTL_MS },
   );

@@ -13,10 +13,7 @@ import {
 
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/header";
-import {
-  getOrSetCachedValue,
-  invalidateCachedPrefix,
-} from "@/lib/cache";
+import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 
 export default function FavoritesScreen() {

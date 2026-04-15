@@ -1,8 +1,5 @@
 import { type RaceFilter } from "@/components/CategoryFilters";
-import {
-  getOrSetCachedValue,
-  invalidateCachedPrefix,
-} from "@/lib/cache";
+import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -207,7 +204,7 @@ export default function PetCardsGrid({
             </Text>
           </View>
           <Text className="text-on-surface-variant text-sm mb-4 font-body">
-            {item.breed} � {item.age}
+            {item.breed} - {item.age}
           </Text>
           <View className="flex-row flex-wrap gap-2">
             {item.tags?.map((tag: string, tagIndex: number) => (

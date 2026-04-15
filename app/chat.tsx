@@ -1,8 +1,5 @@
 import BottomNav from "@/components/BottomNav";
-import {
-  getOrSetCachedValue,
-  invalidateCachedPrefix,
-} from "@/lib/cache";
+import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -313,7 +310,8 @@ export default function ChatScreen() {
             if (!msgError && msgs) {
               latestMap = {};
               msgs.forEach((m) => {
-                if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
+                if (!latestMap[m.request_id])
+                  latestMap[m.request_id] = m.message;
               });
             }
           }

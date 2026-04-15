@@ -1,8 +1,5 @@
+import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPetImageUrls } from "@/lib/petImages";
-import {
-  getOrSetCachedValue,
-  invalidateCachedPrefix,
-} from "@/lib/cache";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
