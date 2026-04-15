@@ -104,7 +104,7 @@ export default function BottomNav() {
     if (isActiveRoute(route)) {
       return;
     }
-    router.replace(route as any);
+    router.navigate(route as any);
   };
 
   return (

@@ -1,5 +1,9 @@
 ﻿import BottomNav from "@/components/BottomNav";
-import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+  peekCachedValue,
+} from "@/lib/cache";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -108,15 +112,38 @@ const checklistItems = [
 ];
 
 let cachedIsAdminForRequest: boolean | null = null;
+let cachedRequestContext: { userId: string; admin: boolean } | null = null;
+
+const getInitialRequestCache = () => {
+  if (!cachedRequestContext) {
+    return null;
+  }
+
+  return peekCachedValue<{
+    requests: AdoptionRequest[];
+    latestMessages: Record<string, string>;
+  }>(
+    `requests:${cachedRequestContext.userId}:${
+      cachedRequestContext.admin ? "admin" : "user"
+    }`,
+  );
+};
 
 export default function RequestScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [requests, setRequests] = useState<AdoptionRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const initialRequestCache = getInitialRequestCache();
+  const initialAdmin =
+    cachedRequestContext?.admin ?? cachedIsAdminForRequest ?? null;
+  const [requests, setRequests] = useState<AdoptionRequest[]>(
+    initialRequestCache?.requests || [],
+  );
+  const [loading, setLoading] = useState(!initialRequestCache);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(
+    cachedRequestContext?.userId ?? null,
+  );
   const [isAdmin, setIsAdmin] = useState<boolean | null>(
-    cachedIsAdminForRequest,
+    initialAdmin,
   );
   const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
     "pending",
@@ -126,7 +153,7 @@ export default function RequestScreen() {
     Record<string, Record<string, boolean>>
   >({});
   const [latestMessages, setLatestMessages] = useState<Record<string, string>>(
-    {},
+    initialRequestCache?.latestMessages || {},
   );
 
   const [chatVisible, setChatVisible] = useState(false);
@@ -177,7 +204,6 @@ export default function RequestScreen() {
   }, [cleanupMessageChannel, cleanupRequestStatusChannel]);
 
   const fetchRequests = useCallback(async () => {
-    setLoading(true);
     setRequestsError(null);
     try {
       const {
@@ -185,11 +211,12 @@ export default function RequestScreen() {
       } = await supabase.auth.getUser();
 
       if (!user) {
+        cachedRequestContext = null;
         setCurrentUserId(null);
         cachedIsAdminForRequest = false;
         setIsAdmin(false);
         setRequests([]);
-        setLoading(false);
+        setLatestMessages({});
         return;
       }
 
@@ -197,14 +224,32 @@ export default function RequestScreen() {
 
       const admin = await resolveIsAdmin(user);
 
+      cachedRequestContext = { userId: user.id, admin };
       cachedIsAdminForRequest = admin;
       setIsAdmin(admin);
+
+      const cacheKey = `requests:${user.id}:${admin ? "admin" : "user"}`;
+      const warmResponse = peekCachedValue<{
+        requests: AdoptionRequest[];
+        latestMessages: Record<string, string>;
+      }>(cacheKey);
+
+      if (warmResponse) {
+        setRequests(warmResponse.requests);
+        setLatestMessages(warmResponse.latestMessages);
+        if (admin) {
+          ensureChecklistState(warmResponse.requests);
+        }
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
 
       const response = await getOrSetCachedValue<{
         requests: AdoptionRequest[];
         latestMessages: Record<string, string>;
       }>(
-        `requests:${user.id}:${admin ? "admin" : "user"}`,
+        cacheKey,
         async () => {
           let fetchedRequests: AdoptionRequest[] = [];
 
@@ -263,7 +308,7 @@ export default function RequestScreen() {
             latestMessages: latestMap,
           };
         },
-        { ttlMs: 20_000 },
+        { ttlMs: 20_000, forceRefresh: !!warmResponse },
       );
 
       setRequests(response.requests);

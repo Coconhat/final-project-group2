@@ -1,5 +1,9 @@
 import { type RaceFilter } from "@/components/CategoryFilters";
-import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+  peekCachedValue,
+} from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
@@ -33,11 +37,14 @@ type PetCardsGridProps = {
   raceFilter?: RaceFilter;
 };
 
+const PETS_CACHE_KEY = "pets:available:v1";
+
 export default function PetCardsGrid({
   raceFilter = "all",
 }: PetCardsGridProps) {
-  const [pets, setPets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialPets = peekCachedValue<any[]>(PETS_CACHE_KEY);
+  const [pets, setPets] = useState<any[]>(initialPets || []);
+  const [loading, setLoading] = useState(!initialPets);
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
@@ -69,9 +76,15 @@ export default function PetCardsGrid({
   useFocusEffect(
     useCallback(() => {
       const fetchPets = async () => {
+        const warmPets = peekCachedValue<any[]>(PETS_CACHE_KEY);
+        if (warmPets) {
+          setPets(warmPets);
+          setLoading(false);
+        }
+
         try {
           const cachedPets = await getOrSetCachedValue<any[]>(
-            "pets:available:v1",
+            PETS_CACHE_KEY,
             async () => {
               const { data: petsData, error: petsError } = await supabase
                 .from("pets")
@@ -106,7 +119,10 @@ export default function PetCardsGrid({
                 (pet) => !adoptedPetIds.has(String(pet.id)),
               );
             },
-            { ttlMs: 60_000 },
+            {
+              ttlMs: 60_000,
+              forceRefresh: !!warmPets,
+            },
           );
 
           setPets(cachedPets);
@@ -259,11 +275,7 @@ export default function PetCardsGrid({
                 onPress={() => router.push(`/pet/${item.id}`)}
               >
                 <Text className="text-primary font-bold text-sm">Adopt Me</Text>
-                <MaterialIcons
-                  name="arrow-forward"
-                  size={16}
-                  color="#a04223"
-                />
+                <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
               </TouchableOpacity>
             </View>
           )}

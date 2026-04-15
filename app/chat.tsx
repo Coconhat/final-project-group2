@@ -1,5 +1,9 @@
 import BottomNav from "@/components/BottomNav";
-import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+  peekCachedValue,
+} from "@/lib/cache";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -85,6 +89,19 @@ const STATUS_META: Record<
   },
 };
 
+let cachedChatUserId: string | null = null;
+
+const getInitialChatCache = () => {
+  if (!cachedChatUserId) {
+    return null;
+  }
+
+  return peekCachedValue<{
+    threads: AdoptionRequest[];
+    latestMessages: Record<string, string>;
+  }>(`chat:threads:${cachedChatUserId}`);
+};
+
 export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ requestId?: string | string[] }>();
@@ -92,10 +109,15 @@ export default function ChatScreen() {
     ? params.requestId[0]
     : params.requestId;
 
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const initialChatCache = getInitialChatCache();
+  const [loading, setLoading] = useState(!initialChatCache);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(
+    cachedChatUserId,
+  );
   const [isAdmin, setIsAdmin] = useState(false);
-  const [threads, setThreads] = useState<AdoptionRequest[]>([]);
+  const [threads, setThreads] = useState<AdoptionRequest[]>(
+    initialChatCache?.threads || [],
+  );
   const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
     "pending",
   );
@@ -103,7 +125,7 @@ export default function ChatScreen() {
     Record<string, boolean>
   >({});
   const [latestMessages, setLatestMessages] = useState<Record<string, string>>(
-    {},
+    initialChatCache?.latestMessages || {},
   );
 
   const [selectedRequest, setSelectedRequest] =
@@ -249,21 +271,20 @@ export default function ChatScreen() {
   };
 
   const fetchThreads = useCallback(async () => {
-    setLoading(true);
-
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) {
+        cachedChatUserId = null;
         setCurrentUserId(null);
         setIsAdmin(false);
         setThreads([]);
-        setLoading(false);
         return;
       }
 
+      cachedChatUserId = user.id;
       setCurrentUserId(user.id);
 
       const admin = await resolveIsAdmin(user);
@@ -271,15 +292,28 @@ export default function ChatScreen() {
 
       if (!admin) {
         setThreads([]);
-        setLoading(false);
         return;
+      }
+
+      const cacheKey = `chat:threads:${user.id}`;
+      const warmResponse = peekCachedValue<{
+        threads: AdoptionRequest[];
+        latestMessages: Record<string, string>;
+      }>(cacheKey);
+
+      if (warmResponse) {
+        setThreads(warmResponse.threads);
+        setLatestMessages(warmResponse.latestMessages);
+        setLoading(false);
+      } else {
+        setLoading(true);
       }
 
       const response = await getOrSetCachedValue<{
         threads: AdoptionRequest[];
         latestMessages: Record<string, string>;
       }>(
-        `chat:threads:${user.id}`,
+        cacheKey,
         async () => {
           const { data, error } = await supabase
             .from("adoption_requests")
@@ -321,7 +355,7 @@ export default function ChatScreen() {
             latestMessages: latestMap,
           };
         },
-        { ttlMs: 20_000 },
+        { ttlMs: 20_000, forceRefresh: !!warmResponse },
       );
 
       const nextThreads = response.threads;

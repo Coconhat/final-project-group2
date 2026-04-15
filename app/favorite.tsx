@@ -151,11 +151,7 @@ export default function FavoritesScreen() {
               onPress={() => router.push(`/pet/${item.id}`)}
             >
               <Text className="text-primary font-bold text-sm">Adopt Me</Text>
-              <MaterialIcons
-                name="arrow-forward"
-                size={16}
-                color="#a04223"
-              />
+              <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
             </TouchableOpacity>
           )}
         </View>

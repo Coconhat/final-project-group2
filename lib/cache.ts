@@ -11,6 +11,10 @@ type CachedOptions = {
   forceRefresh?: boolean;
 };
 
+type PeekCachedOptions = {
+  allowExpired?: boolean;
+};
+
 const CACHE_PREFIX = "app-cache:";
 const DEFAULT_TTL_MS = 60_000;
 const memoryCache = new Map<string, CacheEntry<unknown>>();
@@ -19,6 +23,24 @@ const isWeb = Platform.OS === "web";
 const namespacedKey = (key: string) => `${CACHE_PREFIX}${key}`;
 
 const isExpired = (entry: CacheEntry<unknown>) => entry.expiresAt <= Date.now();
+
+export const peekCachedValue = <T>(
+  key: string,
+  options: PeekCachedOptions = {},
+): T | null => {
+  const { allowExpired = true } = options;
+  const inMemory = memoryCache.get(key);
+
+  if (!inMemory) {
+    return null;
+  }
+
+  if (!allowExpired && isExpired(inMemory)) {
+    return null;
+  }
+
+  return inMemory.data as T;
+};
 
 const parseStoredEntry = (
   rawValue: string | null,
