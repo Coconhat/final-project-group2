@@ -41,7 +41,7 @@ type PetFormState = {
   petType: string;
   age: string;
   breed: string;
-  imageUrls: string[]; // Use an array for multiple pictures
+  imageUrls: string[];
   gender: string;
   description: string;
   tagsCsv: string;
@@ -107,6 +107,34 @@ const readUriAsArrayBuffer = async (uri: string): Promise<ArrayBuffer> => {
   }
 };
 
+// ─── Reusable Label component ────────────────────────────────────────────────
+const FieldLabel = ({ children }: { children: string }) => (
+  <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1.5">
+    {children}
+  </Text>
+);
+
+// ─── Section header with accent line ─────────────────────────────────────────
+const SectionHeader = ({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) => (
+  <View className="mb-5">
+    <View className="flex-row items-center gap-2 mb-1">
+      <View className="w-1 h-6 rounded-full bg-primary" />
+      <Text className="font-headline text-2xl font-extrabold text-on-surface">
+        {title}
+      </Text>
+    </View>
+    {subtitle && (
+      <Text className="text-on-surface-variant text-sm pl-3">{subtitle}</Text>
+    )}
+  </View>
+);
+
 export default function AdminScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -131,6 +159,7 @@ export default function AdminScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [uploadImageIndex, setUploadImageIndex] = useState(0);
   const messageChannelRef = useRef<any>(null);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   const ensureChecklistState = (items: AdoptionRequest[]) => {
     setChecklistState((current) => {
@@ -162,7 +191,6 @@ export default function AdminScreen() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-
     try {
       const {
         data: { user },
@@ -263,7 +291,7 @@ export default function AdminScreen() {
 
       const pickerResult = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        allowsEditing: false, // Turn off editing to allow picking multiple (if EXPO supported it here) but we can do it one by one or via allowsMultipleSelection
+        allowsEditing: false,
         allowsMultipleSelection: true,
         preferredAssetRepresentationMode:
           ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
@@ -288,11 +316,12 @@ export default function AdminScreen() {
           asset.fileName?.split(".").pop()?.toLowerCase() ||
           asset.uri.split(".").pop()?.split("?")[0]?.toLowerCase() ||
           "jpg";
-        const ext = ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(rawExt)
+        const ext = ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(
+          rawExt,
+        )
           ? rawExt
           : "jpg";
         const storagePath = `pets/${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-
         const fileData = await readUriAsArrayBuffer(asset.uri);
 
         const { error: uploadError } = await supabase.storage
@@ -328,7 +357,7 @@ export default function AdminScreen() {
       updateForm("imageUrls", [...petForm.imageUrls, ...uploadedUrls]);
       Alert.alert(
         "Images uploaded",
-        `${uploadedUrls.length} image(s) uploaded to ${PET_IMAGE_BUCKET}/\n${uploadedPaths.join("\n")}`,
+        `${uploadedUrls.length} image(s) uploaded successfully.`,
       );
     } catch (error: any) {
       Alert.alert(
@@ -360,7 +389,7 @@ export default function AdminScreen() {
       age: petForm.age.trim(),
       breed: petForm.breed.trim(),
       race: petForm.petType,
-      image_url: petForm.imageUrls.join(","), // Store array as CSV in the existing column
+      image_url: petForm.imageUrls.join(","),
     };
 
     const payload: Record<string, any> = {
@@ -379,7 +408,6 @@ export default function AdminScreen() {
 
     let { error } = await runSave(payload);
 
-    // Fallback for schema mismatch: save required fields only.
     if (error?.code === "42703") {
       const fallback = await runSave(minimalPayload);
       error = fallback.error;
@@ -390,7 +418,7 @@ export default function AdminScreen() {
       Alert.alert(
         "Save failed",
         isRlsError
-          ? "RLS blocked writing to pets. For this school project, run SQL in schema/admin_pets_setup.sql to allow authenticated CRUD on pets."
+          ? "RLS blocked writing to pets. Run SQL in schema/admin_pets_setup.sql."
           : `${error.message}${error.code ? ` (${error.code})` : ""}`,
       );
       return;
@@ -404,10 +432,7 @@ export default function AdminScreen() {
   const handleEditPet = (pet: any) => {
     setEditingPetId(String(pet.id));
     setUploadImageIndex(0);
-
-    // Parse array properly from comma-separated string
     const parsedImageUrls = pet.image_url ? pet.image_url.split(",") : [];
-
     setPetForm({
       name: pet.name || "",
       petType: pet.pet_type || pet.race || pet.type || "",
@@ -422,24 +447,28 @@ export default function AdminScreen() {
   };
 
   const handleDeletePet = (pet: any) => {
-    Alert.alert("Delete pet", `Delete ${pet.name}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          const { error } = await supabase
-            .from("pets")
-            .delete()
-            .eq("id", pet.id);
-          if (error) {
-            Alert.alert("Delete failed", error.message);
-            return;
-          }
-          loadData();
+    Alert.alert(
+      "Delete pet",
+      `Are you sure you want to remove ${pet.name}? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase
+              .from("pets")
+              .delete()
+              .eq("id", pet.id);
+            if (error) {
+              Alert.alert("Delete failed", error.message);
+              return;
+            }
+            loadData();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const loadMessages = async (requestId: string) => {
@@ -469,7 +498,6 @@ export default function AdminScreen() {
 
   const subscribeToMessages = (requestId: string) => {
     cleanupMessageChannel();
-
     const channel = supabase
       .channel(`admin-request-chat-${requestId}`)
       .on(
@@ -488,10 +516,13 @@ export default function AdminScreen() {
             }
             return [...current, incoming];
           });
+          setTimeout(
+            () => chatScrollRef.current?.scrollToEnd({ animated: true }),
+            100,
+          );
         },
       )
       .subscribe();
-
     messageChannelRef.current = channel;
   };
 
@@ -500,7 +531,6 @@ export default function AdminScreen() {
       Alert.alert("Not ready", "Please wait for your admin session.");
       return;
     }
-
     setSelectedRequest(request);
     setChatVisible(true);
     setDraftMessage("");
@@ -518,17 +548,11 @@ export default function AdminScreen() {
   };
 
   const sendMessage = async () => {
-    if (!selectedRequest || !adminUserId) {
-      return;
-    }
-
+    if (!selectedRequest || !adminUserId) return;
     const messageText = draftMessage.trim();
-    if (!messageText || sendingMessage) {
-      return;
-    }
+    if (!messageText || sendingMessage) return;
 
     setSendingMessage(true);
-
     const { error } = await supabase.from("adoption_request_messages").insert([
       {
         request_id: selectedRequest.id,
@@ -549,6 +573,10 @@ export default function AdminScreen() {
 
     setDraftMessage("");
     setSendingMessage(false);
+    setTimeout(
+      () => chatScrollRef.current?.scrollToEnd({ animated: true }),
+      100,
+    );
   };
 
   const toggleChecklistItem = (requestId: string, item: string) => {
@@ -564,6 +592,9 @@ export default function AdminScreen() {
   const checklistComplete = (requestId: string) =>
     checklistItems.every((item) => checklistState[requestId]?.[item]);
 
+  const checklistProgress = (requestId: string) =>
+    checklistItems.filter((item) => checklistState[requestId]?.[item]).length;
+
   const handleVerdict = async (
     request: AdoptionRequest,
     nextStatus: "completed" | "rejected",
@@ -575,75 +606,98 @@ export default function AdminScreen() {
       );
       return;
     }
-
     if (!checklistComplete(request.id)) {
       Alert.alert(
-        "Checklist required",
-        "Please complete all checklist items first.",
+        "Checklist incomplete",
+        "Please complete all checklist items before making a decision.",
       );
       return;
     }
 
-    const { error } = await supabase
-      .from("adoption_requests")
-      .update({ status: nextStatus })
-      .eq("id", request.id);
-
-    if (error) {
-      Alert.alert("Update failed", error.message);
-      return;
-    }
-
-    if (adminUserId) {
-      await supabase.from("adoption_request_messages").insert([
+    const action = nextStatus === "completed" ? "approve" : "reject";
+    Alert.alert(
+      `Confirm ${action}`,
+      `Are you sure you want to ${action} this adoption request for ${request.pet_name || "this pet"}?`,
+      [
+        { text: "Cancel", style: "cancel" },
         {
-          request_id: request.id,
-          sender_id: adminUserId,
-          message:
-            nextStatus === "completed"
-              ? "Your adoption request has been approved. Please reply to confirm next steps."
-              : "Your adoption request was not approved. Thank you for your interest.",
-        },
-      ]);
-    }
+          text: nextStatus === "completed" ? "Approve" : "Reject",
+          style: nextStatus === "rejected" ? "destructive" : "default",
+          onPress: async () => {
+            const { error } = await supabase
+              .from("adoption_requests")
+              .update({ status: nextStatus })
+              .eq("id", request.id);
 
-    Alert.alert("Saved", `Request marked as ${nextStatus}.`);
-    loadData();
+            if (error) {
+              Alert.alert("Update failed", error.message);
+              return;
+            }
+
+            if (adminUserId) {
+              await supabase.from("adoption_request_messages").insert([
+                {
+                  request_id: request.id,
+                  sender_id: adminUserId,
+                  message:
+                    nextStatus === "completed"
+                      ? "Your adoption request has been approved. Please reply to confirm next steps."
+                      : "Your adoption request was not approved. Thank you for your interest.",
+                },
+              ]);
+            }
+
+            Alert.alert(
+              "Done",
+              `Request has been ${nextStatus === "completed" ? "approved" : "rejected"}.`,
+            );
+            loadData();
+          },
+        },
+      ],
+    );
   };
 
-  const statusPill = (status: string) => {
+  const statusConfig = (status: string) => {
     if (status === "completed") {
       return {
         bg: "bg-secondary/10",
         text: "text-secondary",
-        label: "Completed",
+        dot: "bg-secondary",
+        label: "Approved",
+        icon: "check-circle" as const,
       };
     }
     if (status === "rejected") {
       return {
-        bg: "bg-error-container/20",
+        bg: "bg-error/10",
         text: "text-error",
+        dot: "bg-error",
         label: "Rejected",
+        icon: "cancel" as const,
       };
     }
     return {
-      bg: "bg-surface-container-highest",
-      text: "text-on-surface",
+      bg: "bg-primary/10",
+      text: "text-primary",
+      dot: "bg-primary",
       label: "Pending",
+      icon: "schedule" as const,
     };
   };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-background items-center justify-center">
+      <View className="flex-1 bg-background items-center justify-center gap-3">
         <ActivityIndicator size="large" color="#fd8863" />
+        <Text className="text-on-surface-variant text-sm">
+          Loading admin data…
+        </Text>
       </View>
     );
   }
 
-  if (!authorized) {
-    return null;
-  }
+  if (!authorized) return null;
 
   const formatMessageTime = (isoDate: string) =>
     new Date(isoDate).toLocaleTimeString([], {
@@ -651,54 +705,88 @@ export default function AdminScreen() {
       minute: "2-digit",
     });
 
+  const windowWidth = Dimensions.get("window").width;
+
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-row items-center px-4 py-3 border-b border-surface-container-highest">
+      {/* ── Header ── */}
+      <View className="flex-row items-center px-4 py-3 bg-background border-b border-surface-container-highest">
         <TouchableOpacity
           onPress={() => router.back()}
-          className="w-10 h-10 bg-surface-container-low rounded-full items-center justify-center"
+          className="w-10 h-10 bg-surface-container-low rounded-full items-center justify-center mr-3"
+          activeOpacity={0.7}
         >
-          <MaterialIcons name="arrow-back" size={24} color="#3e2f2b" />
+          <MaterialIcons name="arrow-back" size={22} color="#3e2f2b" />
         </TouchableOpacity>
-        <Text className="font-headline font-bold text-xl text-on-surface ml-3">
-          Admin Panel
-        </Text>
+        <View className="flex-1">
+          <Text className="font-headline font-bold text-xl text-on-surface">
+            Admin Panel
+          </Text>
+          <Text className="text-xs text-on-surface-variant">
+            Manage pets & adoption requests
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={loadData}
+          className="w-10 h-10 bg-surface-container-low rounded-full items-center justify-center"
+          activeOpacity={0.7}
+        >
+          <MaterialIcons name="refresh" size={20} color="#3e2f2b" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerClassName="px-4 pt-5 pb-36">
-        <View className="mb-8">
-          <Text className="font-headline text-2xl font-extrabold text-on-surface mb-2">
-            Manage Pets
-          </Text>
-          <Text className="text-on-surface-variant mb-4">
-            Add, edit, or delete pets listed in your store.
-          </Text>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 24,
+          paddingBottom: 140,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ════════════════════ MANAGE PETS ════════════════════ */}
+        <View className="mb-10">
+          <SectionHeader
+            title="Manage Pets"
+            subtitle="Add, edit, or remove pets listed in your store."
+          />
 
-          <View className="bg-surface-container-low rounded-2xl p-4 gap-3">
-            <TextInput
-              value={petForm.name}
-              onChangeText={(value) => updateForm("name", value)}
-              placeholder="Pet name"
-              placeholderTextColor="#a79a96"
-              className="bg-white p-3 rounded-xl text-on-surface"
-            />
-            <View className="bg-white rounded-xl p-3">
-              <Text className="text-on-surface-variant mb-2">Pet Type</Text>
+          {/* ── Pet Form Card ── */}
+          <View className="bg-surface-container-low rounded-3xl p-5 gap-4">
+            {/* Name */}
+            <View>
+              <FieldLabel>Pet Name</FieldLabel>
+              <TextInput
+                value={petForm.name}
+                onChangeText={(v) => updateForm("name", v)}
+                placeholder="e.g. Max"
+                placeholderTextColor="#a79a96"
+                className="bg-white px-4 py-3 rounded-2xl text-on-surface text-base border border-surface-container-highest"
+              />
+            </View>
+
+            {/* Pet Type */}
+            <View>
+              <FieldLabel>Pet Type</FieldLabel>
               <TouchableOpacity
                 onPress={() => setShowPetTypeOptions((prev) => !prev)}
-                className="h-11 rounded-xl border border-surface-container-highest px-3 flex-row items-center justify-between"
+                className="bg-white px-4 h-12 rounded-2xl border border-surface-container-highest flex-row items-center justify-between"
+                activeOpacity={0.7}
               >
                 <Text
                   className={
                     petForm.petType
-                      ? "text-on-surface"
-                      : "text-on-surface-variant"
+                      ? "text-on-surface text-base"
+                      : "text-on-surface-variant text-base"
                   }
                 >
                   {petForm.petType || "Select pet type"}
                 </Text>
                 <MaterialIcons
-                  name={showPetTypeOptions ? "expand-less" : "expand-more"}
+                  name={
+                    showPetTypeOptions
+                      ? "keyboard-arrow-up"
+                      : "keyboard-arrow-down"
+                  }
                   size={22}
                   color="#7f7572"
                 />
@@ -714,18 +802,17 @@ export default function AdminScreen() {
                           updateForm("petType", option);
                           setShowPetTypeOptions(false);
                         }}
-                        className={`px-4 h-9 rounded-full items-center justify-center border ${
+                        activeOpacity={0.7}
+                        className={`px-5 h-10 rounded-full items-center justify-center border ${
                           selected
-                            ? "border-primary bg-primary/10"
-                            : "border-surface-container-highest"
+                            ? "border-primary bg-primary"
+                            : "border-surface-container-highest bg-white"
                         }`}
                       >
                         <Text
-                          className={
-                            selected
-                              ? "text-primary font-bold"
-                              : "text-on-surface-variant"
-                          }
+                          className={`font-semibold text-sm ${
+                            selected ? "text-white" : "text-on-surface-variant"
+                          }`}
                         >
                           {option}
                         </Text>
@@ -735,408 +822,619 @@ export default function AdminScreen() {
                 </View>
               )}
             </View>
-            <View className="flex-row gap-2">
-              <TextInput
-                value={petForm.breed}
-                onChangeText={(value) => updateForm("breed", value)}
-                placeholder="Breed"
-                placeholderTextColor="#a79a96"
-                className="bg-white p-3 rounded-xl text-on-surface flex-1"
-              />
-              <TextInput
-                value={petForm.age}
-                onChangeText={(value) => updateForm("age", value)}
-                placeholder="Age"
-                placeholderTextColor="#a79a96"
-                keyboardType="number-pad"
-                className="bg-white p-3 rounded-xl text-on-surface flex-1"
-              />
+
+            {/* Breed + Age row */}
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <FieldLabel>Breed</FieldLabel>
+                <TextInput
+                  value={petForm.breed}
+                  onChangeText={(v) => updateForm("breed", v)}
+                  placeholder="e.g. Labrador"
+                  placeholderTextColor="#a79a96"
+                  className="bg-white px-4 py-3 rounded-2xl text-on-surface border border-surface-container-highest"
+                />
+              </View>
+              <View style={{ width: 90 }}>
+                <FieldLabel>Age (yrs)</FieldLabel>
+                <TextInput
+                  value={petForm.age}
+                  onChangeText={(v) => updateForm("age", v)}
+                  placeholder="e.g. 2"
+                  placeholderTextColor="#a79a96"
+                  keyboardType="number-pad"
+                  className="bg-white px-4 py-3 rounded-2xl text-on-surface border border-surface-container-highest text-center"
+                />
+              </View>
             </View>
-            <View className="flex-row gap-2">
-              <View className="bg-white rounded-xl p-3 flex-1">
-                <Text className="text-on-surface-variant mb-2">Gender</Text>
+
+            {/* Gender + Vaccinated row */}
+            <View className="flex-row gap-3">
+              {/* Gender */}
+              <View className="flex-1">
+                <FieldLabel>Gender</FieldLabel>
                 <View className="flex-row gap-2">
-                  {[
-                    { label: "Male", value: "Male" },
-                    { label: "Female", value: "Female" },
-                  ].map((option) => {
-                    const selected = petForm.gender === option.value;
+                  {(["Male", "Female"] as const).map((g) => {
+                    const selected = petForm.gender === g;
                     return (
                       <TouchableOpacity
-                        key={option.value}
-                        onPress={() => updateForm("gender", option.value)}
-                        className={`flex-1 rounded-full h-10 items-center justify-center border ${
+                        key={g}
+                        onPress={() => updateForm("gender", g)}
+                        activeOpacity={0.7}
+                        className={`flex-1 rounded-2xl h-11 items-center justify-center border ${
                           selected
-                            ? "border-primary bg-primary/10"
-                            : "border-surface-container-highest bg-surface-container-low"
+                            ? "border-primary bg-primary"
+                            : "border-surface-container-highest bg-white"
                         }`}
                       >
                         <Text
-                          className={
-                            selected
-                              ? "text-primary font-bold"
-                              : "text-on-surface-variant"
-                          }
+                          className={`font-semibold text-sm ${
+                            selected ? "text-white" : "text-on-surface-variant"
+                          }`}
                         >
-                          {option.label}
+                          {g}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               </View>
-              <View className="bg-white rounded-xl px-3 flex-1 flex-row items-center justify-between">
-                <Text className="text-on-surface-variant">Vaccinated</Text>
+
+              {/* Vaccinated */}
+              <View
+                className="bg-white rounded-2xl px-4 border border-surface-container-highest justify-center"
+                style={{ minWidth: 130 }}
+              >
+                <FieldLabel>Vaccinated</FieldLabel>
                 <Switch
                   value={petForm.vaccinated}
-                  onValueChange={(value) => updateForm("vaccinated", value)}
+                  onValueChange={(v) => updateForm("vaccinated", v)}
                   trackColor={{ false: "#e8e2d9", true: "#fd8863" }}
                   thumbColor="#ffffff"
                 />
               </View>
             </View>
-            <View className="bg-white p-3 rounded-xl">
-              <Text className="text-on-surface-variant mb-2">Pet Image</Text>
-              <TouchableOpacity
-                onPress={pickAndUploadImage}
-                disabled={uploadingImage}
-                className={`h-11 rounded-full items-center justify-center flex-row gap-2 ${
-                  uploadingImage ? "bg-surface-container-highest" : "bg-primary"
-                }`}
-              >
-                <MaterialIcons
-                  name={uploadingImage ? "hourglass-top" : "upload"}
-                  size={18}
-                  color={uploadingImage ? "#7f7572" : "#ffffff"}
-                />
-                <Text
-                  className={
+
+            {/* Image Upload */}
+            <View>
+              <FieldLabel>Pet Photos</FieldLabel>
+              <View className="bg-white rounded-2xl p-4 border border-surface-container-highest">
+                <TouchableOpacity
+                  onPress={pickAndUploadImage}
+                  disabled={uploadingImage}
+                  activeOpacity={0.75}
+                  className={`h-12 rounded-2xl items-center justify-center flex-row gap-2 ${
                     uploadingImage
-                      ? "text-on-surface-variant font-bold"
-                      : "text-on-primary font-bold"
-                  }
+                      ? "bg-surface-container-highest"
+                      : "bg-primary"
+                  }`}
                 >
-                  {uploadingImage ? "Uploading..." : "Upload Image"}
-                </Text>
-              </TouchableOpacity>
-
-              {petForm.imageUrls.length > 0 && (
-                <View className="mt-3">
-                  <View className="rounded-xl overflow-hidden relative border border-surface-container-highest">
-                    <FlatList
-                      data={petForm.imageUrls}
-                      keyExtractor={(_, index) => index.toString()}
-                      horizontal
-                      pagingEnabled
-                      showsHorizontalScrollIndicator={false}
-                      className="w-full h-48"
-                      onScroll={(e) => {
-                        const x = e.nativeEvent.contentOffset.x;
-                        const w = e.nativeEvent.layoutMeasurement.width;
-                        setUploadImageIndex(Math.round(x / w));
-                      }}
-                      scrollEventThrottle={16}
-                      renderItem={({ item }) => (
-                        <Image
-                          source={{ uri: item }}
-                          // Assuming fixed width approx container width, let's use Dimensions or just rely on flex
-                          style={{
-                            width: Dimensions.get("window").width - 64,
-                            height: 192,
-                          }}
-                          resizeMode="cover"
-                        />
-                      )}
-                    />
-
-                    {petForm.imageUrls.length > 1 && (
-                      <View className="absolute bottom-2 left-0 right-0 flex-row justify-center gap-1.5">
-                        {petForm.imageUrls.map((_, index) => (
-                          <View
-                            key={index}
-                            style={{
-                              height: 6,
-                              width: uploadImageIndex === index ? 16 : 6,
-                              borderRadius: 3,
-                              backgroundColor:
-                                uploadImageIndex === index
-                                  ? "#fd8863"
-                                  : "white",
-                              opacity: uploadImageIndex === index ? 1 : 0.7,
-                            }}
-                          />
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                  <Text className="text-on-surface-variant text-xs mt-2 text-center">
-                    {petForm.imageUrls.length} image
-                    {petForm.imageUrls.length > 1 ? "s" : ""} selected. Swipe to
-                    view.
+                  <MaterialIcons
+                    name={
+                      uploadingImage ? "hourglass-top" : "add-photo-alternate"
+                    }
+                    size={20}
+                    color={uploadingImage ? "#7f7572" : "#ffffff"}
+                  />
+                  <Text
+                    className={`font-bold text-sm ${
+                      uploadingImage ? "text-on-surface-variant" : "text-white"
+                    }`}
+                  >
+                    {uploadingImage
+                      ? "Uploading…"
+                      : petForm.imageUrls.length > 0
+                        ? "Add More Photos"
+                        : "Upload Photos"}
                   </Text>
-                </View>
-              )}
-            </View>
-            <TextInput
-              value={petForm.tagsCsv}
-              onChangeText={(value) => updateForm("tagsCsv", value)}
-              placeholder="Tags (comma separated)"
-              placeholderTextColor="#a79a96"
-              className="bg-white p-3 rounded-xl text-on-surface"
-            />
-            <TextInput
-              value={petForm.description}
-              onChangeText={(value) => updateForm("description", value)}
-              placeholder="Description"
-              placeholderTextColor="#a79a96"
-              multiline
-              className="bg-white p-3 pl-5 rounded-xl text-on-surface min-h-24"
-            />
+                </TouchableOpacity>
 
+                {petForm.imageUrls.length > 0 && (
+                  <View className="mt-4">
+                    <View
+                      className="rounded-2xl overflow-hidden"
+                      style={{ borderWidth: 1, borderColor: "#e8e2d9" }}
+                    >
+                      <FlatList
+                        data={petForm.imageUrls}
+                        keyExtractor={(_, i) => i.toString()}
+                        horizontal
+                        pagingEnabled
+                        showsHorizontalScrollIndicator={false}
+                        style={{ height: 200 }}
+                        onScroll={(e) => {
+                          const x = e.nativeEvent.contentOffset.x;
+                          const w = e.nativeEvent.layoutMeasurement.width;
+                          setUploadImageIndex(Math.round(x / w));
+                        }}
+                        scrollEventThrottle={16}
+                        renderItem={({ item }) => (
+                          <Image
+                            source={{ uri: item }}
+                            style={{ width: windowWidth - 96, height: 200 }}
+                            resizeMode="cover"
+                          />
+                        )}
+                      />
+                      {/* Dot indicators */}
+                      {petForm.imageUrls.length > 1 && (
+                        <View className="absolute bottom-3 left-0 right-0 flex-row justify-center gap-1.5">
+                          {petForm.imageUrls.map((_, idx) => (
+                            <View
+                              key={idx}
+                              style={{
+                                height: 6,
+                                width: uploadImageIndex === idx ? 18 : 6,
+                                borderRadius: 3,
+                                backgroundColor:
+                                  uploadImageIndex === idx
+                                    ? "#fd8863"
+                                    : "rgba(255,255,255,0.8)",
+                              }}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                    <View className="flex-row items-center justify-between mt-2 px-1">
+                      <Text className="text-xs text-on-surface-variant">
+                        {petForm.imageUrls.length} photo
+                        {petForm.imageUrls.length !== 1 ? "s" : ""} · Swipe to
+                        preview
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          Alert.alert(
+                            "Remove photos",
+                            "Remove all uploaded photos?",
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              {
+                                text: "Remove all",
+                                style: "destructive",
+                                onPress: () => {
+                                  updateForm("imageUrls", []);
+                                  setUploadImageIndex(0);
+                                },
+                              },
+                            ],
+                          );
+                        }}
+                      >
+                        <Text className="text-xs text-error font-semibold">
+                          Remove all
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Tags */}
+            <View>
+              <FieldLabel>Tags</FieldLabel>
+              <TextInput
+                value={petForm.tagsCsv}
+                onChangeText={(v) => updateForm("tagsCsv", v)}
+                placeholder="e.g. friendly, playful, trained"
+                placeholderTextColor="#a79a96"
+                className="bg-white px-4 py-3 rounded-2xl text-on-surface border border-surface-container-highest"
+              />
+              <Text className="text-xs text-on-surface-variant mt-1 pl-1">
+                Separate tags with commas
+              </Text>
+            </View>
+
+            {/* Description */}
+            <View>
+              <FieldLabel>Description</FieldLabel>
+              <TextInput
+                value={petForm.description}
+                onChangeText={(v) => updateForm("description", v)}
+                placeholder="Tell adopters about this pet's personality, history, and needs…"
+                placeholderTextColor="#a79a96"
+                multiline
+                textAlignVertical="top"
+                className="bg-white px-4 py-3 rounded-2xl text-on-surface border border-surface-container-highest"
+                style={{ minHeight: 100 }}
+              />
+            </View>
+
+            {/* Action buttons */}
             <View className="flex-row gap-3 pt-1">
-              <TouchableOpacity
-                onPress={handleSavePet}
-                className="flex-1 h-12 rounded-full bg-primary items-center justify-center"
-              >
-                <Text className="text-on-primary font-bold">
-                  {editingPetId ? "Update Pet" : "Add Pet"}
-                </Text>
-              </TouchableOpacity>
               {editingPetId && (
                 <TouchableOpacity
                   onPress={resetPetForm}
-                  className="h-12 px-6 rounded-full bg-surface-container-highest items-center justify-center"
+                  activeOpacity={0.7}
+                  className="h-13 px-5 rounded-2xl bg-surface-container-highest items-center justify-center"
                 >
                   <Text className="text-on-surface font-bold">Cancel</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                onPress={handleSavePet}
+                activeOpacity={0.8}
+                className="flex-1 min-h-[56px] rounded-2xl bg-primary px-4 py-3 items-center justify-center flex-row gap-2"
+              >
+                <MaterialIcons
+                  name={editingPetId ? "save" : "pets"}
+                  size={18}
+                  color="#ffffff"
+                />
+                <Text className="text-white font-bold text-[15px] leading-[20px]">
+                  {editingPetId ? "Update Pet" : "Add Pet"}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          <View className="mt-4 gap-2">
-            {pets.map((pet) => (
-              <View
-                key={pet.id}
-                className="bg-surface-container-low rounded-xl p-4 flex-row items-center justify-between"
-              >
-                <View className="flex-1 pr-3">
-                  <Text
-                    className="font-headline font-bold text-on-surface text-base"
-                    numberOfLines={1}
+          {/* ── Pet list ── */}
+          {pets.length > 0 ? (
+            <View className="mt-4 gap-2">
+              <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1 pl-1">
+                {pets.length} pet{pets.length !== 1 ? "s" : ""} listed
+              </Text>
+              {pets.map((pet) => {
+                const thumb = pet.image_url?.split(",")[0];
+                return (
+                  <View
+                    key={pet.id}
+                    className="bg-surface-container-low rounded-2xl overflow-hidden flex-row items-center"
+                    style={{ minHeight: 72 }}
                   >
-                    {pet.name}
-                  </Text>
-                  <Text
-                    className="text-on-surface-variant text-sm"
-                    numberOfLines={1}
-                  >
-                    {(pet.pet_type || "Pet") +
-                      " | " +
-                      (pet.breed || "-") +
-                      " | " +
-                      (pet.age || "-")}
-                  </Text>
-                </View>
-                <View className="flex-row gap-2">
-                  <TouchableOpacity
-                    onPress={() => handleEditPet(pet)}
-                    className="w-10 h-10 rounded-full bg-secondary/15 items-center justify-center"
-                  >
-                    <MaterialIcons name="edit" size={20} color="#006b64" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDeletePet(pet)}
-                    className="w-10 h-10 rounded-full bg-error-container/40 items-center justify-center"
-                  >
-                    <MaterialIcons name="delete" size={20} color="#a83836" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
+                    {thumb ? (
+                      <Image
+                        source={{ uri: thumb }}
+                        style={{ width: 72, height: 72 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        className="bg-surface-container-highest items-center justify-center"
+                        style={{ width: 72, height: 72 }}
+                      >
+                        <MaterialIcons name="pets" size={28} color="#a79a96" />
+                      </View>
+                    )}
+                    <View className="flex-1 px-3 py-2">
+                      <Text
+                        className="font-headline font-bold text-on-surface text-base"
+                        numberOfLines={1}
+                      >
+                        {pet.name}
+                      </Text>
+                      <Text
+                        className="text-on-surface-variant text-sm mt-0.5"
+                        numberOfLines={1}
+                      >
+                        {[
+                          pet.pet_type || "Pet",
+                          pet.breed,
+                          pet.age ? `${pet.age} yrs` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    </View>
+                    <View className="flex-row gap-1 pr-3">
+                      <TouchableOpacity
+                        onPress={() => handleEditPet(pet)}
+                        activeOpacity={0.7}
+                        className="w-9 h-9 rounded-full bg-secondary/10 items-center justify-center"
+                      >
+                        <MaterialIcons name="edit" size={18} color="#006b64" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeletePet(pet)}
+                        activeOpacity={0.7}
+                        className="w-9 h-9 rounded-full bg-error/10 items-center justify-center"
+                      >
+                        <MaterialIcons
+                          name="delete"
+                          size={18}
+                          color="#a83836"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View className="mt-4 items-center py-8 bg-surface-container-low rounded-2xl">
+              <MaterialIcons name="pets" size={36} color="#a79a96" />
+              <Text className="text-on-surface-variant mt-2 text-sm">
+                No pets listed yet. Add your first one above.
+              </Text>
+            </View>
+          )}
         </View>
 
+        {/* ════════════════════ ADOPTION REQUESTS ════════════════════ */}
         <View>
-          <Text className="font-headline text-2xl font-extrabold text-on-surface mb-2">
-            Review Requests
-          </Text>
-          <Text className="text-on-surface-variant mb-4">
-            Complete all checklist items before final approval or rejection.
-          </Text>
+          <SectionHeader
+            title="Adoption Requests"
+            subtitle="Complete all checklist items before approving or rejecting."
+          />
 
-          <View className="gap-3">
-            {requests.map((request) => {
-              const pill = statusPill(request.status);
-              const done = checklistComplete(request.id);
+          {requests.length === 0 ? (
+            <View className="items-center py-12 bg-surface-container-low rounded-2xl">
+              <MaterialIcons name="inbox" size={40} color="#a79a96" />
+              <Text className="text-on-surface-variant mt-3 text-sm">
+                No adoption requests yet.
+              </Text>
+            </View>
+          ) : (
+            <View className="gap-4">
+              {requests.map((request) => {
+                const pill = statusConfig(request.status);
+                const done = checklistComplete(request.id);
+                const progress = checklistProgress(request.id);
+                const isPending = request.status === "pending";
 
-              return (
-                <View
-                  key={request.id}
-                  className="bg-surface-container-low rounded-2xl p-4"
-                >
-                  <View className="flex-row justify-between items-start gap-3 mb-2">
-                    <View className="flex-1">
-                      <Text
-                        className="font-headline font-bold text-lg text-on-surface"
-                        numberOfLines={1}
-                      >
-                        {request.pet_name || "Unknown Pet"}
-                      </Text>
-                      <Text
-                        className="text-on-surface-variant text-sm"
-                        numberOfLines={1}
-                      >
-                        {request.full_name} | {request.email}
-                      </Text>
-                      <Text
-                        className="text-on-surface-variant text-sm"
-                        numberOfLines={1}
-                      >
-                        {request.phone}
-                      </Text>
-                    </View>
-                    <View className={`px-3 py-1 rounded-full ${pill.bg}`}>
-                      <Text
-                        className={`uppercase text-[10px] font-bold ${pill.text}`}
-                      >
-                        {pill.label}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="bg-background rounded-xl p-3 mb-3">
-                    <View className="flex-row justify-between mb-2">
-                      <Text className="text-on-surface font-bold">
-                        Applicant details
-                      </Text>
-                      <Text className="text-xs text-on-surface-variant">
-                        {new Date(request.created_at).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <View className="flex-row flex-wrap gap-2">
-                      <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                        <Text className="text-xs text-on-surface-variant">
-                          Own/Rent
-                        </Text>
-                        <Text className="text-sm text-on-surface font-bold">
-                          {request.own_or_rent}
-                        </Text>
-                      </View>
-                      <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                        <Text className="text-xs text-on-surface-variant">
-                          Housing
-                        </Text>
-                        <Text className="text-sm text-on-surface font-bold">
-                          {request.housing_type}
-                        </Text>
-                      </View>
-                      {!!request.other_housing_type && (
-                        <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                          <Text className="text-xs text-on-surface-variant">
-                            Other housing
+                return (
+                  <View
+                    key={request.id}
+                    className="bg-surface-container-low rounded-3xl overflow-hidden"
+                  >
+                    {/* Card header */}
+                    <View className="px-5 pt-5 pb-4">
+                      <View className="flex-row items-start justify-between gap-3">
+                        <View className="flex-1">
+                          <Text
+                            className="font-headline font-bold text-lg text-on-surface"
+                            numberOfLines={1}
+                          >
+                            {request.pet_name || "Unknown Pet"}
                           </Text>
-                          <Text className="text-sm text-on-surface font-bold">
-                            {request.other_housing_type}
+                          <Text
+                            className="text-on-surface-variant text-sm mt-0.5"
+                            numberOfLines={1}
+                          >
+                            {request.full_name}
+                          </Text>
+                          <Text
+                            className="text-on-surface-variant text-xs mt-0.5"
+                            numberOfLines={1}
+                          >
+                            {request.email} · {request.phone}
                           </Text>
                         </View>
-                      )}
-                      <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                        <Text className="text-xs text-on-surface-variant">
-                          Yard
-                        </Text>
-                        <Text className="text-sm text-on-surface font-bold">
-                          {request.has_yard ? "Yes" : "No"}
-                        </Text>
-                      </View>
-                      <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                        <Text className="text-xs text-on-surface-variant">
-                          Adults
-                        </Text>
-                        <Text className="text-sm text-on-surface font-bold">
-                          {request.adult_count}
-                        </Text>
-                      </View>
-                      <View className="px-3 py-2 rounded-lg bg-surface-container-low">
-                        <Text className="text-xs text-on-surface-variant">
-                          Children
-                        </Text>
-                        <Text className="text-sm text-on-surface font-bold">
-                          {request.child_count}
-                        </Text>
-                      </View>
-                    </View>
-                    <View className="mt-3">
-                      <Text className="text-xs text-on-surface-variant">
-                        Other pets
-                      </Text>
-                      <Text className="text-sm text-on-surface">
-                        {request.other_pets?.trim() || "None reported"}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="bg-background rounded-xl p-3 mb-3">
-                    {checklistItems.map((item) => {
-                      const checked = !!checklistState[request.id]?.[item];
-                      return (
-                        <TouchableOpacity
-                          key={item}
-                          onPress={() => toggleChecklistItem(request.id, item)}
-                          disabled={request.status !== "pending"}
-                          className="flex-row items-center py-2"
+                        <View
+                          className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full ${pill.bg}`}
                         >
-                          <MaterialIcons
-                            name={
-                              checked ? "check-box" : "check-box-outline-blank"
-                            }
-                            size={22}
-                            color={checked ? "#006b64" : "#a79a96"}
+                          <View
+                            className={`w-1.5 h-1.5 rounded-full ${pill.dot}`}
                           />
-                          <Text className="text-on-surface ml-2 flex-1">
-                            {item}
+                          <Text
+                            className={`text-xs font-bold uppercase tracking-wide ${pill.text}`}
+                          >
+                            {pill.label}
                           </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                        </View>
+                      </View>
 
-                  <View className="flex-row gap-3">
-                    <TouchableOpacity
-                      onPress={() => openChatForRequest(request)}
-                      className="h-11 px-4 rounded-full bg-surface-container-highest items-center justify-center"
-                    >
-                      <Text className="text-on-surface font-bold">Chat</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleVerdict(request, "completed")}
-                      disabled={request.status !== "pending" || !done}
-                      className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        request.status !== "pending" || !done
-                          ? "bg-secondary/30"
-                          : "bg-secondary"
-                      }`}
-                    >
-                      <Text className="text-white font-bold">Approve</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleVerdict(request, "rejected")}
-                      disabled={request.status !== "pending" || !done}
-                      className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        request.status !== "pending" || !done
-                          ? "bg-error/30"
-                          : "bg-error"
-                      }`}
-                    >
-                      <Text className="text-white font-bold">Reject</Text>
-                    </TouchableOpacity>
+                      <Text className="text-xs text-on-surface-variant mt-3">
+                        Submitted{" "}
+                        {new Date(request.created_at).toLocaleDateString(
+                          undefined,
+                          {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          },
+                        )}
+                      </Text>
+                    </View>
+
+                    {/* Divider */}
+                    <View className="h-px bg-surface-container-highest mx-5" />
+
+                    {/* Applicant details grid */}
+                    <View className="px-5 py-4">
+                      <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-3">
+                        Applicant Details
+                      </Text>
+                      <View className="flex-row flex-wrap gap-2">
+                        {[
+                          { label: "Own/Rent", value: request.own_or_rent },
+                          { label: "Housing", value: request.housing_type },
+                          ...(request.other_housing_type
+                            ? [
+                                {
+                                  label: "Other housing",
+                                  value: request.other_housing_type,
+                                },
+                              ]
+                            : []),
+                          {
+                            label: "Yard",
+                            value: request.has_yard ? "Yes" : "No",
+                          },
+                          {
+                            label: "Adults",
+                            value: String(request.adult_count),
+                          },
+                          {
+                            label: "Children",
+                            value: String(request.child_count),
+                          },
+                        ].map(({ label, value }) => (
+                          <View
+                            key={label}
+                            className="bg-background rounded-xl px-3 py-2"
+                          >
+                            <Text className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wide">
+                              {label}
+                            </Text>
+                            <Text className="text-sm text-on-surface font-bold mt-0.5">
+                              {value}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                      <View className="mt-3 bg-background rounded-xl px-3 py-2.5">
+                        <Text className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wide">
+                          Other pets
+                        </Text>
+                        <Text className="text-sm text-on-surface mt-0.5">
+                          {request.other_pets?.trim() || "None reported"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Divider */}
+                    <View className="h-px bg-surface-container-highest mx-5" />
+
+                    {/* Checklist */}
+                    <View className="px-5 py-4">
+                      <View className="flex-row items-center justify-between mb-3">
+                        <Text className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+                          Verification Checklist
+                        </Text>
+                        <Text
+                          className={`text-xs font-bold ${
+                            done ? "text-secondary" : "text-on-surface-variant"
+                          }`}
+                        >
+                          {progress}/{checklistItems.length}
+                        </Text>
+                      </View>
+
+                      {/* Progress bar */}
+                      <View className="h-1.5 bg-surface-container-highest rounded-full mb-3 overflow-hidden">
+                        <View
+                          className={`h-full rounded-full ${done ? "bg-secondary" : "bg-primary"}`}
+                          style={{
+                            width: `${(progress / checklistItems.length) * 100}%`,
+                          }}
+                        />
+                      </View>
+
+                      <View className="gap-0.5">
+                        {checklistItems.map((item) => {
+                          const checked = !!checklistState[request.id]?.[item];
+                          return (
+                            <TouchableOpacity
+                              key={item}
+                              onPress={() =>
+                                isPending &&
+                                toggleChecklistItem(request.id, item)
+                              }
+                              disabled={!isPending}
+                              activeOpacity={isPending ? 0.6 : 1}
+                              className="flex-row items-center py-2 gap-3"
+                            >
+                              <View
+                                className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
+                                  checked
+                                    ? "bg-secondary border-secondary"
+                                    : "border-surface-container-highest bg-white"
+                                }`}
+                              >
+                                {checked && (
+                                  <MaterialIcons
+                                    name="check"
+                                    size={12}
+                                    color="white"
+                                  />
+                                )}
+                              </View>
+                              <Text
+                                className={`flex-1 text-sm ${
+                                  checked
+                                    ? "text-secondary line-through"
+                                    : "text-on-surface"
+                                }`}
+                              >
+                                {item}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* Divider */}
+                    <View className="h-px bg-surface-container-highest mx-5" />
+
+                    {/* Action buttons */}
+                    <View className="px-5 py-4 flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={() => openChatForRequest(request)}
+                        activeOpacity={0.7}
+                        className="h-11 px-4 rounded-2xl bg-background border border-surface-container-highest items-center justify-center flex-row gap-1.5"
+                      >
+                        <MaterialIcons
+                          name="chat-bubble-outline"
+                          size={16}
+                          color="#7f7572"
+                        />
+                        <Text className="text-on-surface font-semibold text-sm">
+                          Chat
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleVerdict(request, "completed")}
+                        disabled={!isPending || !done}
+                        activeOpacity={0.8}
+                        className={`flex-1 h-11 rounded-2xl items-center justify-center flex-row gap-1.5 ${
+                          !isPending || !done
+                            ? "bg-secondary/20"
+                            : "bg-secondary"
+                        }`}
+                      >
+                        <MaterialIcons
+                          name="check"
+                          size={16}
+                          color={!isPending || !done ? "#a79a96" : "white"}
+                        />
+                        <Text
+                          className={`font-bold text-sm ${
+                            !isPending || !done
+                              ? "text-on-surface-variant"
+                              : "text-white"
+                          }`}
+                        >
+                          Approve
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleVerdict(request, "rejected")}
+                        disabled={!isPending || !done}
+                        activeOpacity={0.8}
+                        className={`flex-1 h-11 rounded-2xl items-center justify-center flex-row gap-1.5 ${
+                          !isPending || !done ? "bg-error/20" : "bg-error"
+                        }`}
+                      >
+                        <MaterialIcons
+                          name="close"
+                          size={16}
+                          color={!isPending || !done ? "#a79a96" : "white"}
+                        />
+                        <Text
+                          className={`font-bold text-sm ${
+                            !isPending || !done
+                              ? "text-on-surface-variant"
+                              : "text-white"
+                          }`}
+                        >
+                          Reject
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       </ScrollView>
 
+      {/* ════════════════════ CHAT MODAL ════════════════════ */}
       <Modal
         visible={chatVisible}
         animationType="slide"
@@ -1147,116 +1445,186 @@ export default function AdminScreen() {
           className="flex-1 bg-background"
           edges={["top", "bottom"]}
         >
-          <View className="px-4 pt-2 pb-3 border-b border-surface-container-highest flex-row items-center gap-3">
+          {/* Chat header */}
+          <View className="px-4 py-3 border-b border-surface-container-highest flex-row items-center gap-3">
             <TouchableOpacity
               onPress={closeChat}
+              activeOpacity={0.7}
               className="w-10 h-10 rounded-full bg-surface-container-low items-center justify-center"
             >
               <MaterialIcons name="arrow-back" size={22} color="#3e2f2b" />
             </TouchableOpacity>
             <View className="flex-1">
-              <Text className="font-headline font-bold text-lg text-on-surface">
+              <Text
+                className="font-headline font-bold text-base text-on-surface"
+                numberOfLines={1}
+              >
                 {selectedRequest?.pet_name || "Adoption Chat"}
               </Text>
-              <Text className="text-xs text-on-surface-variant mt-1">
-                {selectedRequest?.full_name || "Applicant"}
+              <Text
+                className="text-xs text-on-surface-variant"
+                numberOfLines={1}
+              >
+                {selectedRequest?.full_name || "Applicant"} ·{" "}
+                {selectedRequest?.email || ""}
               </Text>
             </View>
+            {selectedRequest && (
+              <View
+                className={`px-3 py-1 rounded-full ${
+                  statusConfig(selectedRequest.status).bg
+                }`}
+              >
+                <Text
+                  className={`text-xs font-bold ${
+                    statusConfig(selectedRequest.status).text
+                  }`}
+                >
+                  {statusConfig(selectedRequest.status).label}
+                </Text>
+              </View>
+            )}
           </View>
 
+          {/* Messages area */}
           <View className="flex-1">
             {messagesLoading ? (
-              <View className="flex-1 items-center justify-center">
+              <View className="flex-1 items-center justify-center gap-2">
                 <ActivityIndicator size="small" color="#fd8863" />
+                <Text className="text-on-surface-variant text-sm">
+                  Loading messages…
+                </Text>
               </View>
             ) : chatTableMissing ? (
-              <View className="flex-1 items-center justify-center px-6">
-                <MaterialIcons name="error-outline" size={32} color="#a79a96" />
-                <Text className="text-on-surface text-center mt-2">
-                  Chat table not found.
+              <View className="flex-1 items-center justify-center px-8 gap-3">
+                <View className="w-16 h-16 rounded-full bg-error/10 items-center justify-center">
+                  <MaterialIcons
+                    name="error-outline"
+                    size={32}
+                    color="#a83836"
+                  />
+                </View>
+                <Text className="text-on-surface font-semibold text-center">
+                  Chat table not found
                 </Text>
-                <Text className="text-on-surface-variant text-center mt-1 text-sm">
-                  Run the SQL in schema/adoption_request_chat.sql to enable
-                  chat.
+                <Text className="text-on-surface-variant text-sm text-center">
+                  Run the SQL in{" "}
+                  <Text className="font-mono text-primary">
+                    schema/adoption_request_chat.sql
+                  </Text>{" "}
+                  to enable messaging.
                 </Text>
               </View>
             ) : (
-              <ScrollView className="px-4 pt-4">
+              <ScrollView
+                ref={chatScrollRef}
+                className="flex-1 px-4"
+                contentContainerStyle={{ paddingTop: 16, paddingBottom: 8 }}
+                onContentSizeChange={() =>
+                  chatScrollRef.current?.scrollToEnd({ animated: false })
+                }
+              >
                 {messages.length === 0 ? (
-                  <View className="items-center py-10">
-                    <MaterialIcons
-                      name="chat-bubble-outline"
-                      size={32}
-                      color="#a79a96"
-                    />
-                    <Text className="text-on-surface-variant mt-2">
-                      No messages yet. Start the conversation.
+                  <View className="items-center py-16 gap-3">
+                    <View className="w-16 h-16 rounded-full bg-surface-container-high items-center justify-center">
+                      <MaterialIcons
+                        name="chat-bubble-outline"
+                        size={28}
+                        color="#a79a96"
+                      />
+                    </View>
+                    <Text className="text-on-surface font-semibold">
+                      No messages yet
+                    </Text>
+                    <Text className="text-on-surface-variant text-sm text-center">
+                      Start the conversation with the applicant.
                     </Text>
                   </View>
                 ) : (
-                  messages.map((message) => {
-                    const isMine = message.sender_id === adminUserId;
-                    return (
-                      <View
-                        key={message.id}
-                        className={`mb-2 px-1 ${isMine ? "items-end" : "items-start"}`}
-                      >
+                  <View className="gap-1">
+                    {messages.map((message, idx) => {
+                      const isMine = message.sender_id === adminUserId;
+                      const showTime =
+                        idx === messages.length - 1 ||
+                        messages[idx + 1]?.sender_id !== message.sender_id;
+                      return (
                         <View
-                          className={`max-w-[82%] rounded-3xl px-4 py-3 ${
-                            isMine
-                              ? "bg-primary rounded-br-md"
-                              : "bg-surface-container-high rounded-bl-md"
+                          key={message.id}
+                          className={`${isMine ? "items-end" : "items-start"} ${
+                            showTime ? "mb-3" : "mb-0.5"
                           }`}
                         >
-                          <Text
-                            className={
-                              isMine ? "text-on-primary" : "text-on-surface"
-                            }
+                          <View
+                            className={`max-w-[80%] px-4 py-3 ${
+                              isMine
+                                ? "bg-primary rounded-3xl rounded-br-lg"
+                                : "bg-surface-container-high rounded-3xl rounded-bl-lg"
+                            }`}
                           >
-                            {message.message}
-                          </Text>
+                            <Text
+                              className={`text-sm leading-5 ${
+                                isMine ? "text-white" : "text-on-surface"
+                              }`}
+                            >
+                              {message.message}
+                            </Text>
+                          </View>
+                          {showTime && (
+                            <Text className="text-[10px] text-on-surface-variant mt-1 px-2">
+                              {formatMessageTime(message.created_at)}
+                            </Text>
+                          )}
                         </View>
-                        <Text className="text-[10px] text-on-surface-variant mt-1 px-1">
-                          {formatMessageTime(message.created_at)}
-                        </Text>
-                      </View>
-                    );
-                  })
+                      );
+                    })}
+                  </View>
                 )}
               </ScrollView>
             )}
           </View>
 
+          {/* Input bar */}
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
           >
-            <View className="flex-row items-center gap-2 px-4 py-3 border-t border-surface-container-highest mb-4">
+            <View className="flex-row items-end gap-2 px-4 py-3 border-t border-surface-container-highest bg-background">
               <TextInput
                 value={draftMessage}
                 onChangeText={setDraftMessage}
-                placeholder="Write a message..."
+                placeholder="Write a message…"
                 placeholderTextColor="#a79a96"
-                className="flex-1 bg-surface-container-low rounded-full px-4 py-2 text-on-surface"
-                editable={!sendingMessage}
+                multiline
+                className="flex-1 bg-surface-container-low rounded-2xl px-4 py-3 text-on-surface text-sm"
+                style={{ maxHeight: 120 }}
+                editable={!sendingMessage && !chatTableMissing}
+                onSubmitEditing={sendMessage}
               />
               <TouchableOpacity
                 onPress={sendMessage}
-                disabled={sendingMessage || !draftMessage.trim()}
-                className={`w-10 h-10 rounded-full items-center justify-center ${
-                  sendingMessage || !draftMessage.trim()
+                disabled={
+                  sendingMessage || !draftMessage.trim() || chatTableMissing
+                }
+                activeOpacity={0.8}
+                className={`w-11 h-11 rounded-full items-center justify-center ${
+                  sendingMessage || !draftMessage.trim() || chatTableMissing
                     ? "bg-surface-container-highest"
                     : "bg-primary"
                 }`}
               >
-                <MaterialIcons
-                  name="send"
-                  size={18}
-                  color={
-                    sendingMessage || !draftMessage.trim()
-                      ? "#a79a96"
-                      : "#ffffff"
-                  }
-                />
+                {sendingMessage ? (
+                  <ActivityIndicator size="small" color="#a79a96" />
+                ) : (
+                  <MaterialIcons
+                    name="send"
+                    size={18}
+                    color={
+                      !draftMessage.trim() || chatTableMissing
+                        ? "#a79a96"
+                        : "#ffffff"
+                    }
+                  />
+                )}
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
