@@ -1,10 +1,11 @@
 import { type RaceFilter } from "@/components/CategoryFilters";
 import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -37,7 +38,33 @@ export default function PetCardsGrid({
 }: PetCardsGridProps) {
   const [pets, setPets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const loadRole = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        setIsAdmin(await resolveIsAdmin(user));
+      } catch {
+        setIsAdmin(false);
+      }
+    };
+
+    void loadRole();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadRole();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -225,15 +252,21 @@ export default function PetCardsGrid({
               </View>
             )}
           </View>
-          <View className="mt-5">
-            <TouchableOpacity
-              className="flex-row items-center gap-2 mt-auto"
-              onPress={() => router.push(`/pet/${item.id}`)}
-            >
-              <Text className="text-primary font-bold text-sm">Adopt Me</Text>
-              <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
-            </TouchableOpacity>
-          </View>
+          {!isAdmin && (
+            <View className="mt-5">
+              <TouchableOpacity
+                className="flex-row items-center gap-2 mt-auto"
+                onPress={() => router.push(`/pet/${item.id}`)}
+              >
+                <Text className="text-primary font-bold text-sm">Adopt Me</Text>
+                <MaterialIcons
+                  name="arrow-forward"
+                  size={16}
+                  color="#a04223"
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     );

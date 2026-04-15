@@ -1,3 +1,4 @@
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { adoptionRequestSchema } from "@/schema/adoption.schema";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -60,6 +61,12 @@ export default function AdoptionRequestScreen() {
         return;
       }
 
+      if (await resolveIsAdmin(user)) {
+        Alert.alert("Admin account", "Admins cannot submit adoption requests.");
+        router.replace("/");
+        return;
+      }
+
       if (user.email) setValue("email", user.email);
 
       const { data: existingRequest } = await supabase
@@ -81,7 +88,7 @@ export default function AdoptionRequestScreen() {
       setIsLoadingAuth(false);
     };
     checkAuthAndPrefill();
-  }, [setValue, router]);
+  }, [id, setValue, router]);
 
   if (isLoadingAuth) {
     return (
@@ -103,6 +110,11 @@ export default function AdoptionRequestScreen() {
 
       if (!user) {
         Alert.alert("Error", "You must be logged in to submit request");
+        return;
+      }
+
+      if (await resolveIsAdmin(user)) {
+        Alert.alert("Admin account", "Admins cannot submit adoption requests.");
         return;
       }
 

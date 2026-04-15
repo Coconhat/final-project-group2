@@ -1,5 +1,6 @@
 import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPetImageUrls } from "@/lib/petImages";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,6 +25,7 @@ export default function PetDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
@@ -59,6 +61,8 @@ export default function PetDetailsScreen() {
         // Check if current user has already requested this pet
         const { data: authData } = await supabase.auth.getUser();
         if (authData.user) {
+          setIsAdmin(await resolveIsAdmin(authData.user));
+
           const { data: requestData } = await supabase
             .from("adoption_requests")
             .select("id")
@@ -292,38 +296,49 @@ export default function PetDetailsScreen() {
               color="#fa746f"
             />
           </TouchableOpacity>
-          <TouchableOpacity
-            className={`flex-1 h-14 rounded-full flex-row items-center justify-center shadow-sm ${
-              hasRequested ? "bg-surface-container-highest" : "bg-primary"
-            }`}
-            disabled={hasRequested}
-            onPress={async () => {
-              const { data: authData } = await supabase.auth.getUser();
-              if (!authData.user) {
-                router.push("/login");
-                return;
-              }
-              if (hasRequested) {
-                Alert.alert(
-                  "Already Requested",
-                  "You have already submitted an adoption request for this pet.",
-                );
-                return;
-              }
-              router.push({
-                pathname: "/adoption-request/[id]",
-                params: { id: String(id), name: pet.name },
-              });
-            }}
-          >
-            <Text
-              className={`font-headline font-bold text-lg ${
-                hasRequested ? "text-on-surface-variant" : "text-on-primary"
+          {!isAdmin && (
+            <TouchableOpacity
+              className={`flex-1 h-14 rounded-full flex-row items-center justify-center shadow-sm ${
+                hasRequested ? "bg-surface-container-highest" : "bg-primary"
               }`}
+              disabled={hasRequested}
+              onPress={async () => {
+                const { data: authData } = await supabase.auth.getUser();
+                if (!authData.user) {
+                  router.push("/login");
+                  return;
+                }
+
+                if (await resolveIsAdmin(authData.user)) {
+                  Alert.alert(
+                    "Admin account",
+                    "Admins cannot submit adoption requests.",
+                  );
+                  return;
+                }
+
+                if (hasRequested) {
+                  Alert.alert(
+                    "Already Requested",
+                    "You have already submitted an adoption request for this pet.",
+                  );
+                  return;
+                }
+                router.push({
+                  pathname: "/adoption-request/[id]",
+                  params: { id: String(id), name: pet.name },
+                });
+              }}
             >
-              {hasRequested ? "Already Requested" : "Start Adoption Request"}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                className={`font-headline font-bold text-lg ${
+                  hasRequested ? "text-on-surface-variant" : "text-on-primary"
+                }`}
+              >
+                {hasRequested ? "Already Requested" : "Start Adoption Request"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>

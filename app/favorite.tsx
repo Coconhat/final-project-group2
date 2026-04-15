@@ -15,11 +15,30 @@ import BottomNav from "@/components/BottomNav";
 import Header from "@/components/header";
 import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
+import { resolveIsAdmin } from "@/lib/roles";
 
 export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadRole = async () => {
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          setIsAdmin(await resolveIsAdmin(user));
+        } catch {
+          setIsAdmin(false);
+        }
+      };
+
+      void loadRole();
+    }, []),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -126,13 +145,19 @@ export default function FavoritesScreen() {
           <Text className="font-body text-on-surface-variant mb-6 text-sm leading-relaxed">
             {item.description || `${item.breed} � ${item.age}`}
           </Text>
-          <TouchableOpacity
-            className="flex-row items-center gap-2 mt-auto"
-            onPress={() => router.push(`/pet/${item.id}`)}
-          >
-            <Text className="text-primary font-bold text-sm">Adopt Me</Text>
-            <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
-          </TouchableOpacity>
+          {!isAdmin && (
+            <TouchableOpacity
+              className="flex-row items-center gap-2 mt-auto"
+              onPress={() => router.push(`/pet/${item.id}`)}
+            >
+              <Text className="text-primary font-bold text-sm">Adopt Me</Text>
+              <MaterialIcons
+                name="arrow-forward"
+                size={16}
+                color="#a04223"
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
