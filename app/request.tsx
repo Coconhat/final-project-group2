@@ -142,9 +142,7 @@ export default function RequestScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(
     cachedRequestContext?.userId ?? null,
   );
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(
-    initialAdmin,
-  );
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(initialAdmin);
   const [adminFilter, setAdminFilter] = useState<"pending" | "completed">(
     "pending",
   );

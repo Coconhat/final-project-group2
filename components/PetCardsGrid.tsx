@@ -38,6 +38,27 @@ type PetCardsGridProps = {
 };
 
 const PETS_CACHE_KEY = "pets:available:v1";
+const USER_REQUEST_STATUS_CACHE_PREFIX = "requests:user-pet-status:";
+
+const buildUserRequestStatusMap = (
+  rows: { pet_id: string | null; status: string | null }[],
+) => {
+  const map: Record<string, string> = {};
+
+  rows.forEach((row) => {
+    if (!row.pet_id) {
+      return;
+    }
+
+    const petId = String(row.pet_id);
+    const status = String(row.status || "pending").toLowerCase();
+    if (!(petId in map)) {
+      map[petId] = status;
+    }
+  });
+
+  return map;
+};
 
 export default function PetCardsGrid({
   raceFilter = "all",
@@ -46,6 +67,9 @@ export default function PetCardsGrid({
   const [pets, setPets] = useState<any[]>(initialPets || []);
   const [loading, setLoading] = useState(!initialPets);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [requestStatusByPetId, setRequestStatusByPetId] = useState<
+    Record<string, string>
+  >({});
   const router = useRouter();
 
   useEffect(() => {
@@ -83,6 +107,41 @@ export default function PetCardsGrid({
         }
 
         try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (user) {
+            const requestStatusCacheKey =
+              `${USER_REQUEST_STATUS_CACHE_PREFIX}${user.id}`;
+            const cachedRequestStatus = await getOrSetCachedValue<
+              Record<string, string>
+            >(
+              requestStatusCacheKey,
+              async () => {
+                const { data, error } = await supabase
+                  .from("adoption_requests")
+                  .select("pet_id, status")
+                  .eq("user_id", user.id)
+                  .order("created_at", { ascending: false });
+
+                if (error) {
+                  throw error;
+                }
+
+                return buildUserRequestStatusMap(
+                  ((data as { pet_id: string | null; status: string | null }[]) ||
+                    []),
+                );
+              },
+              { ttlMs: 20_000 },
+            );
+
+            setRequestStatusByPetId(cachedRequestStatus);
+          } else {
+            setRequestStatusByPetId({});
+          }
+
           const cachedPets = await getOrSetCachedValue<any[]>(
             PETS_CACHE_KEY,
             async () => {
@@ -208,6 +267,9 @@ export default function PetCardsGrid({
 
   const renderItem = ({ item }: { item: any }) => {
     const defaultImage = getPrimaryPetImageUrl(item);
+    const requestStatus = requestStatusByPetId[String(item.id)];
+    const hasRequested = !!requestStatus;
+    const isInProcess = requestStatus === "pending";
 
     return (
       <View className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden mb-6">
@@ -267,14 +329,34 @@ export default function PetCardsGrid({
                 </Text>
               </View>
             )}
+            {hasRequested && (
+              <View className="bg-primary/15 px-2 py-1 rounded">
+                <Text className="text-primary text-[10px] font-bold uppercase">
+                  {isInProcess ? "IN PROCESS" : "REQUESTED"}
+                </Text>
+              </View>
+            )}
           </View>
           {!isAdmin && (
             <View className="mt-5">
               <TouchableOpacity
-                className="flex-row items-center gap-2 mt-auto"
+                className={`flex-row items-center gap-2 mt-auto ${
+                  hasRequested ? "opacity-60" : ""
+                }`}
                 onPress={() => router.push(`/pet/${item.id}`)}
+                disabled={hasRequested}
               >
-                <Text className="text-primary font-bold text-sm">Adopt Me</Text>
+                <Text
+                  className={`font-bold text-sm ${
+                    hasRequested ? "text-on-surface-variant" : "text-primary"
+                  }`}
+                >
+                  {hasRequested
+                    ? isInProcess
+                      ? "In Process"
+                      : "Requested"
+                    : "Adopt Me"}
+                </Text>
                 <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
               </TouchableOpacity>
             </View>

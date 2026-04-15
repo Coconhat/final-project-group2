@@ -1,3 +1,4 @@
+import { invalidateCachedPrefix } from "@/lib/cache";
 import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { adoptionRequestSchema } from "@/schema/adoption.schema";
@@ -144,6 +145,9 @@ export default function AdoptionRequestScreen() {
         );
         return;
       }
+
+      await invalidateCachedPrefix("requests:");
+      await invalidateCachedPrefix("pets:");
 
       Alert.alert(
         "Application Submitted!",

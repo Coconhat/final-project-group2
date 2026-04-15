@@ -1,11 +1,11 @@
 import BottomNav from "@/components/BottomNav";
-import { resolveIsAdmin } from "@/lib/roles";
+import { invalidateRoleCache, resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Platform,
@@ -22,31 +22,47 @@ export default function SettingsScreen() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+  const loadProfile = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-        if (!user) {
-          setIsAdmin(false);
-          setUserEmail(null);
-          return;
-        }
-
-        setUserEmail(user.email ?? null);
-        setIsAdmin(await resolveIsAdmin(user));
-      } catch (error) {
-        console.warn("[Settings] Failed to load profile", error);
+      if (!user) {
         setIsAdmin(false);
         setUserEmail(null);
+        return;
       }
-    };
 
+      setUserEmail(user.email ?? null);
+      setIsAdmin(await resolveIsAdmin(user));
+    } catch (error) {
+      console.warn("[Settings] Failed to load profile", error);
+      setIsAdmin(false);
+      setUserEmail(null);
+    }
+  }, []);
+
+  useEffect(() => {
     void loadProfile();
     void checkPushStatus();
-  }, []);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadProfile();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, [loadProfile]),
+  );
 
   const checkPushStatus = async () => {
     if (Platform.OS === "web") return;
@@ -109,6 +125,9 @@ export default function SettingsScreen() {
     if (error) {
       Alert.alert("Logout Error", error.message);
     } else {
+      setIsAdmin(false);
+      setUserEmail(null);
+      await invalidateRoleCache();
       router.replace("/");
     }
   };

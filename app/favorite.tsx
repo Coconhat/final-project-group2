@@ -17,10 +17,35 @@ import { getOrSetCachedValue, invalidateCachedPrefix } from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 import { resolveIsAdmin } from "@/lib/roles";
 
+const USER_REQUEST_STATUS_CACHE_PREFIX = "requests:user-pet-status:";
+
+const buildUserRequestStatusMap = (
+  rows: { pet_id: string | null; status: string | null }[],
+) => {
+  const map: Record<string, string> = {};
+
+  rows.forEach((row) => {
+    if (!row.pet_id) {
+      return;
+    }
+
+    const petId = String(row.pet_id);
+    const status = String(row.status || "pending").toLowerCase();
+    if (!(petId in map)) {
+      map[petId] = status;
+    }
+  });
+
+  return map;
+};
+
 export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [requestStatusByPetId, setRequestStatusByPetId] = useState<
+    Record<string, string>
+  >({});
   const router = useRouter();
 
   useFocusEffect(
@@ -30,9 +55,44 @@ export default function FavoritesScreen() {
           const {
             data: { user },
           } = await supabase.auth.getUser();
+
+          if (user) {
+            const requestStatusCacheKey =
+              `${USER_REQUEST_STATUS_CACHE_PREFIX}${user.id}`;
+            const cachedRequestStatus = await getOrSetCachedValue<
+              Record<string, string>
+            >(
+              requestStatusCacheKey,
+              async () => {
+                const { data, error } = await supabase
+                  .from("adoption_requests")
+                  .select("pet_id, status")
+                  .eq("user_id", user.id)
+                  .order("created_at", { ascending: false });
+
+                if (error) {
+                  throw error;
+                }
+
+                return buildUserRequestStatusMap(
+                  ((data as {
+                    pet_id: string | null;
+                    status: string | null;
+                  }[]) || []),
+                );
+              },
+              { ttlMs: 20_000 },
+            );
+
+            setRequestStatusByPetId(cachedRequestStatus);
+          } else {
+            setRequestStatusByPetId({});
+          }
+
           setIsAdmin(await resolveIsAdmin(user));
         } catch {
           setIsAdmin(false);
+          setRequestStatusByPetId({});
         }
       };
 
@@ -90,6 +150,9 @@ export default function FavoritesScreen() {
 
   const renderItem = ({ item }: { item: any }) => {
     const defaultImage = getPrimaryPetImageUrl(item);
+    const requestStatus = requestStatusByPetId[String(item.id)];
+    const hasRequested = !!requestStatus;
+    const isInProcess = requestStatus === "pending";
 
     return (
       <View className="bg-surface-container-highest rounded-xl overflow-hidden shadow-none mb-6">
@@ -145,12 +208,32 @@ export default function FavoritesScreen() {
           <Text className="font-body text-on-surface-variant mb-6 text-sm leading-relaxed">
             {item.description || `${item.breed} � ${item.age}`}
           </Text>
+          {hasRequested && (
+            <View className="bg-primary/15 px-3 py-1 rounded-full self-start mb-3">
+              <Text className="text-primary text-[10px] font-bold uppercase">
+                {isInProcess ? "IN PROCESS" : "REQUESTED"}
+              </Text>
+            </View>
+          )}
           {!isAdmin && (
             <TouchableOpacity
-              className="flex-row items-center gap-2 mt-auto"
+              className={`flex-row items-center gap-2 mt-auto ${
+                hasRequested ? "opacity-60" : ""
+              }`}
               onPress={() => router.push(`/pet/${item.id}`)}
+              disabled={hasRequested}
             >
-              <Text className="text-primary font-bold text-sm">Adopt Me</Text>
+              <Text
+                className={`font-bold text-sm ${
+                  hasRequested ? "text-on-surface-variant" : "text-primary"
+                }`}
+              >
+                {hasRequested
+                  ? isInProcess
+                    ? "In Process"
+                    : "Requested"
+                  : "Adopt Me"}
+              </Text>
               <MaterialIcons name="arrow-forward" size={16} color="#a04223" />
             </TouchableOpacity>
           )}

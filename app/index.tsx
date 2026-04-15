@@ -45,7 +45,10 @@ const buildLatestMessageMap = (
   return latestMap;
 };
 
-const prefetchRequestAndChatCaches = async (userId: string, isAdmin: boolean) => {
+const prefetchRequestAndChatCaches = async (
+  userId: string,
+  isAdmin: boolean,
+) => {
   if (isAdmin) {
     await Promise.all([
       getOrSetCachedValue(
