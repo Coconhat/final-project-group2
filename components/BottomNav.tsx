@@ -1,3 +1,4 @@
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
@@ -25,28 +26,7 @@ export default function BottomNav() {
           return;
         }
 
-        const roleFromMetadata =
-          typeof user.user_metadata?.role === "string"
-            ? String(user.user_metadata.role).toLowerCase()
-            : null;
-
-        // Apply cached/metadata role immediately to avoid rendering the wrong tab briefly.
-        if (roleFromMetadata) {
-          const metadataIsAdmin = roleFromMetadata === "admin";
-          cachedIsAdmin = metadataIsAdmin;
-          setIsAdmin(metadataIsAdmin);
-        }
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const roleFromProfile =
-          typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-        const resolvedIsAdmin =
-          roleFromProfile === "admin" || roleFromMetadata === "admin";
+        const resolvedIsAdmin = await resolveIsAdmin(user);
 
         cachedIsAdmin = resolvedIsAdmin;
         setIsAdmin(resolvedIsAdmin);

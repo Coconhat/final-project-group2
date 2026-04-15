@@ -1,4 +1,9 @@
 ﻿import BottomNav from "@/components/BottomNav";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -193,84 +198,80 @@ export default function RequestScreen() {
 
       setCurrentUserId(user.id);
 
-      const roleFromMetadata =
-        typeof user.user_metadata?.role === "string"
-          ? String(user.user_metadata.role).toLowerCase()
-          : null;
-
-      if (roleFromMetadata) {
-        const metadataIsAdmin = roleFromMetadata === "admin";
-        cachedIsAdminForRequest = metadataIsAdmin;
-        setIsAdmin(metadataIsAdmin);
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const roleFromProfile =
-        typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-      const admin =
-        roleFromProfile === "admin" ||
-        roleFromMetadata === "admin" ||
-        (!!profileError && cachedIsAdminForRequest === true);
+      const admin = await resolveIsAdmin(user);
 
       cachedIsAdminForRequest = admin;
       setIsAdmin(admin);
 
-      let fetchedRequests: AdoptionRequest[] = [];
+      const response = await getOrSetCachedValue<{
+        requests: AdoptionRequest[];
+        latestMessages: Record<string, string>;
+      }>(
+        `requests:${user.id}:${admin ? "admin" : "user"}`,
+        async () => {
+          let fetchedRequests: AdoptionRequest[] = [];
 
+          if (admin) {
+            const { data, error } = await supabase
+              .from("adoption_requests")
+              .select(
+                "id, pet_name, status, created_at, full_name, email, phone, own_or_rent, housing_type, other_housing_type, has_yard, adult_count, child_count, other_pets",
+              )
+              .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            fetchedRequests = ((data as AdoptionRequest[]) || []).map(
+              (request) => ({
+                ...request,
+                status: normalizeRequestStatus(request.status),
+              }),
+            );
+          } else {
+            const { data, error } = await supabase
+              .from("adoption_requests")
+              .select("id, pet_name, status, created_at")
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false });
+
+            if (error) throw error;
+            fetchedRequests = ((data as AdoptionRequest[]) || []).map(
+              (request) => ({
+                ...request,
+                status: normalizeRequestStatus(request.status),
+              }),
+            );
+          }
+
+          let latestMap: Record<string, string> = {};
+
+          if (fetchedRequests.length > 0) {
+            const threadIds = fetchedRequests.map((t) => t.id);
+            const { data: msgs, error: msgError } = await supabase
+              .from("adoption_request_messages")
+              .select("request_id, message")
+              .in("request_id", threadIds)
+              .order("created_at", { ascending: false });
+
+            if (!msgError && msgs) {
+              latestMap = {};
+              msgs.forEach((m) => {
+                if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
+              });
+            }
+          }
+
+          return {
+            requests: fetchedRequests,
+            latestMessages: latestMap,
+          };
+        },
+        { ttlMs: 20_000 },
+      );
+
+      setRequests(response.requests);
+      setLatestMessages(response.latestMessages);
       if (admin) {
-        const { data, error } = await supabase
-          .from("adoption_requests")
-          .select(
-            "id, pet_name, status, created_at, full_name, email, phone, own_or_rent, housing_type, other_housing_type, has_yard, adult_count, child_count, other_pets",
-          )
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        fetchedRequests = ((data as AdoptionRequest[]) || []).map(
-          (request) => ({
-            ...request,
-            status: normalizeRequestStatus(request.status),
-          }),
-        );
-        setRequests(fetchedRequests);
-        ensureChecklistState(fetchedRequests);
-      } else {
-        const { data, error } = await supabase
-          .from("adoption_requests")
-          .select("id, pet_name, status, created_at")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        fetchedRequests = ((data as AdoptionRequest[]) || []).map(
-          (request) => ({
-            ...request,
-            status: normalizeRequestStatus(request.status),
-          }),
-        );
-        setRequests(fetchedRequests);
-      }
-
-      if (fetchedRequests.length > 0) {
-        const threadIds = fetchedRequests.map((t) => t.id);
-        const { data: msgs, error: msgError } = await supabase
-          .from("adoption_request_messages")
-          .select("request_id, message")
-          .in("request_id", threadIds)
-          .order("created_at", { ascending: false });
-
-        if (!msgError && msgs) {
-          const latestMap: Record<string, string> = {};
-          msgs.forEach((m) => {
-            if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
-          });
-          setLatestMessages(latestMap);
-        }
+        ensureChecklistState(response.requests);
       }
     } catch (error: any) {
       console.error("Error fetching requests:", error);
@@ -487,6 +488,8 @@ export default function RequestScreen() {
     }
 
     setDraftMessage("");
+    await invalidateCachedPrefix("requests:");
+    await invalidateCachedPrefix("chat:");
     setSendingMessage(false);
   };
 
@@ -582,6 +585,9 @@ export default function RequestScreen() {
         },
       ]);
     }
+
+    await invalidateCachedPrefix("requests:");
+    await invalidateCachedPrefix("chat:");
   };
 
   const handleCancelRequest = async (request: AdoptionRequest) => {
@@ -634,6 +640,9 @@ export default function RequestScreen() {
                   "I would like to cancel my adoption request. Thank you for your help.",
               },
             ]);
+
+            await invalidateCachedPrefix("requests:");
+            await invalidateCachedPrefix("chat:");
 
             Alert.alert("Cancelled", "Your request has been cancelled.");
           },

@@ -1,4 +1,5 @@
 import BottomNav from "@/components/BottomNav";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Device from "expo-device";
@@ -35,14 +36,7 @@ export default function SettingsScreen() {
         }
 
         setUserEmail(user.email ?? null);
-
-        const { data } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-
-        setIsAdmin(data?.role === "admin");
+        setIsAdmin(await resolveIsAdmin(user));
       } catch (error) {
         console.warn("[Settings] Failed to load profile", error);
         setIsAdmin(false);

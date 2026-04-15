@@ -1,4 +1,9 @@
 import BottomNav from "@/components/BottomNav";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -203,37 +208,46 @@ export default function AdminScreen() {
 
       setAdminUserId(user.id);
 
-      const { data: profile, error: profileError } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || profile?.role !== "admin") {
+      const isAdmin = await resolveIsAdmin(user);
+      if (!isAdmin) {
         Alert.alert("Access denied", "This page is for admins only.", [
           { text: "OK", onPress: () => router.replace("/") },
         ]);
         return;
       }
 
-      const [
-        { data: petData, error: petError },
-        { data: requestData, error: requestError },
-      ] = await Promise.all([
-        supabase.from("pets").select("*").order("name", { ascending: true }),
-        supabase
-          .from("adoption_requests")
-          .select("*")
-          .in("status", ["pending", "completed", "rejected"])
-          .order("created_at", { ascending: false }),
-      ]);
+      const dashboardData = await getOrSetCachedValue<{
+        pets: any[];
+        requests: AdoptionRequest[];
+      }>(
+        `admin:dashboard:${user.id}`,
+        async () => {
+          const [
+            { data: petData, error: petError },
+            { data: requestData, error: requestError },
+          ] = await Promise.all([
+            supabase.from("pets").select("*").order("name", { ascending: true }),
+            supabase
+              .from("adoption_requests")
+              .select("*")
+              .in("status", ["pending", "completed", "rejected"])
+              .order("created_at", { ascending: false }),
+          ]);
 
-      if (petError) throw petError;
-      if (requestError) throw requestError;
+          if (petError) throw petError;
+          if (requestError) throw requestError;
 
-      setPets(petData || []);
-      setRequests((requestData as AdoptionRequest[]) || []);
-      ensureChecklistState((requestData as AdoptionRequest[]) || []);
+          return {
+            pets: petData || [],
+            requests: (requestData as AdoptionRequest[]) || [],
+          };
+        },
+        { ttlMs: 30_000 },
+      );
+
+      setPets(dashboardData.pets);
+      setRequests(dashboardData.requests);
+      ensureChecklistState(dashboardData.requests);
       setAuthorized(true);
     } catch (error: any) {
       Alert.alert(
@@ -425,6 +439,9 @@ export default function AdminScreen() {
     }
 
     Alert.alert("Success", editingPetId ? "Pet updated." : "Pet added.");
+    await invalidateCachedPrefix("pets:");
+    await invalidateCachedPrefix("pet:detail:");
+    await invalidateCachedPrefix("admin:dashboard:");
     resetPetForm();
     loadData();
   };
@@ -464,6 +481,9 @@ export default function AdminScreen() {
               Alert.alert("Delete failed", error.message);
               return;
             }
+            await invalidateCachedPrefix("pets:");
+            await invalidateCachedPrefix("pet:detail:");
+            await invalidateCachedPrefix("admin:dashboard:");
             loadData();
           },
         },
@@ -651,6 +671,9 @@ export default function AdminScreen() {
               "Done",
               `Request has been ${nextStatus === "completed" ? "approved" : "rejected"}.`,
             );
+            await invalidateCachedPrefix("requests:");
+            await invalidateCachedPrefix("chat:");
+            await invalidateCachedPrefix("admin:dashboard:");
             loadData();
           },
         },

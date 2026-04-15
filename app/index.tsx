@@ -1,3 +1,4 @@
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import React, { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
@@ -25,23 +26,7 @@ export default function HomeScreen() {
           return;
         }
 
-        const roleFromMetadata =
-          typeof user.user_metadata?.role === "string"
-            ? String(user.user_metadata.role).toLowerCase()
-            : null;
-
-        if (roleFromMetadata === "admin") {
-          setIsAdmin(true);
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        setIsAdmin(String(profile?.role || "").toLowerCase() === "admin");
+        setIsAdmin(await resolveIsAdmin(user));
       } catch (error) {
         console.warn("[Home] Failed to load role", error);
         setIsAdmin(false);

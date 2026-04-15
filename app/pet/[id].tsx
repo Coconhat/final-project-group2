@@ -1,4 +1,8 @@
 import { getPetImageUrls } from "@/lib/petImages";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -27,14 +31,31 @@ export default function PetDetailsScreen() {
 
   useEffect(() => {
     const fetchPetDetails = async () => {
-      try {
-        const { data: petData, error: petError } = await supabase
-          .from("pets")
-          .select("*")
-          .eq("id", id)
-          .single();
+      const petId = String(id || "");
+      if (!petId) {
+        setLoading(false);
+        return;
+      }
 
-        if (petError) throw petError;
+      try {
+        const petData = await getOrSetCachedValue<any>(
+          `pet:detail:${petId}`,
+          async () => {
+            const { data, error: petError } = await supabase
+              .from("pets")
+              .select("*")
+              .eq("id", petId)
+              .single();
+
+            if (petError) {
+              throw petError;
+            }
+
+            return data;
+          },
+          { ttlMs: 60_000 },
+        );
+
         setPet(petData);
         setIsFavorite(petData.is_favorite || false);
 
@@ -44,7 +65,7 @@ export default function PetDetailsScreen() {
           const { data: requestData } = await supabase
             .from("adoption_requests")
             .select("id")
-            .eq("pet_id", String(id))
+            .eq("pet_id", petId)
             .eq("user_id", authData.user.id)
             .single();
 
@@ -83,7 +104,11 @@ export default function PetDetailsScreen() {
     if (error) {
       console.error("Error toggling favorite:", error);
       setIsFavorite(!newStatus);
+      return;
     }
+
+    await invalidateCachedPrefix("pets:");
+    await invalidateCachedPrefix(`pet:detail:${String(id)}`);
   };
 
   if (loading) {

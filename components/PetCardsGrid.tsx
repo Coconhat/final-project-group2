@@ -1,4 +1,8 @@
 import { type RaceFilter } from "@/components/CategoryFilters";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -42,42 +46,46 @@ export default function PetCardsGrid({
     useCallback(() => {
       const fetchPets = async () => {
         try {
-          const { data: petsData, error: petsError } = await supabase
-            .from("pets")
-            .select("*");
+          const cachedPets = await getOrSetCachedValue<any[]>(
+            "pets:available:v1",
+            async () => {
+              const { data: petsData, error: petsError } = await supabase
+                .from("pets")
+                .select("*");
 
-          if (petsError) {
-            console.error("Supabase error:", petsError);
-            return;
-          }
+              if (petsError) {
+                throw petsError;
+              }
 
-          const { data: adoptedRows, error: adoptedError } = await supabase
-            .from("adoption_requests")
-            .select("pet_id, status");
+              const { data: adoptedRows, error: adoptedError } = await supabase
+                .from("adoption_requests")
+                .select("pet_id, status");
 
-          if (adoptedError) {
-            console.error("Adoption status fetch error:", adoptedError);
-            setPets(petsData || []);
-            return;
-          }
+              if (adoptedError) {
+                console.error("Adoption status fetch error:", adoptedError);
+                return petsData || [];
+              }
 
-          const adoptedPetIds = new Set(
-            (
-              (adoptedRows as {
-                pet_id: string | null;
-                status?: string | null;
-              }[]) || []
-            )
-              .filter((row) => isCompletedStatus(row.status))
-              .map((row) => row.pet_id)
-              .filter((petId): petId is string => !!petId),
+              const adoptedPetIds = new Set(
+                (
+                  (adoptedRows as {
+                    pet_id: string | null;
+                    status?: string | null;
+                  }[]) || []
+                )
+                  .filter((row) => isCompletedStatus(row.status))
+                  .map((row) => row.pet_id)
+                  .filter((petId): petId is string => !!petId),
+              );
+
+              return (petsData || []).filter(
+                (pet) => !adoptedPetIds.has(String(pet.id)),
+              );
+            },
+            { ttlMs: 60_000 },
           );
 
-          const filteredPets = (petsData || []).filter(
-            (pet) => !adoptedPetIds.has(String(pet.id)),
-          );
-
-          setPets(filteredPets);
+          setPets(cachedPets);
         } catch (error) {
           console.error("Error fetching pets:", error);
         } finally {
@@ -114,7 +122,10 @@ export default function PetCardsGrid({
 
     if (error) {
       console.error("Error updating favorite status:", error);
+      return;
     }
+
+    await invalidateCachedPrefix("pets:");
   };
 
   const filteredPets = useMemo(() => {

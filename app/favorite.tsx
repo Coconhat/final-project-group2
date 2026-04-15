@@ -13,6 +13,10 @@ import {
 
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/header";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
 import { getPrimaryPetImageUrl } from "@/lib/petImages";
 
 export default function FavoritesScreen() {
@@ -24,15 +28,23 @@ export default function FavoritesScreen() {
     useCallback(() => {
       const fetchFavorites = async () => {
         try {
-          const { data, error } = await supabase
-            .from("pets")
-            .select("*")
-            .eq("is_favorite", true);
-          if (error) {
-            console.error("Supabase error:", error);
-            return;
-          }
-          setFavorites(data || []);
+          const data = await getOrSetCachedValue<any[]>(
+            "pets:favorites:v1",
+            async () => {
+              const { data: favoriteData, error } = await supabase
+                .from("pets")
+                .select("*")
+                .eq("is_favorite", true);
+
+              if (error) {
+                throw error;
+              }
+
+              return favoriteData || [];
+            },
+            { ttlMs: 30_000 },
+          );
+          setFavorites(data);
         } catch (error) {
           console.error("Error fetching favorites:", error);
         } finally {
@@ -54,7 +66,10 @@ export default function FavoritesScreen() {
 
     if (error) {
       console.error("Error updating favorite status:", error);
+      return;
     }
+
+    await invalidateCachedPrefix("pets:");
   };
 
   const renderItem = ({ item }: { item: any }) => {

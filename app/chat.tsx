@@ -1,4 +1,9 @@
 import BottomNav from "@/components/BottomNav";
+import {
+  getOrSetCachedValue,
+  invalidateCachedPrefix,
+} from "@/lib/cache";
+import { resolveIsAdmin } from "@/lib/roles";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -264,19 +269,7 @@ export default function ChatScreen() {
 
       setCurrentUserId(user.id);
 
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const roleFromProfile =
-        typeof profile?.role === "string" ? profile.role.toLowerCase() : null;
-      const roleFromMetadata =
-        typeof user.user_metadata?.role === "string"
-          ? String(user.user_metadata.role).toLowerCase()
-          : null;
-      const admin = roleFromProfile === "admin" || roleFromMetadata === "admin";
+      const admin = await resolveIsAdmin(user);
       setIsAdmin(admin);
 
       if (!admin) {
@@ -285,39 +278,56 @@ export default function ChatScreen() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("adoption_requests")
-        .select("id, pet_name, status, created_at, full_name, email")
-        .order("created_at", { ascending: false });
+      const response = await getOrSetCachedValue<{
+        threads: AdoptionRequest[];
+        latestMessages: Record<string, string>;
+      }>(
+        `chat:threads:${user.id}`,
+        async () => {
+          const { data, error } = await supabase
+            .from("adoption_requests")
+            .select("id, pet_name, status, created_at, full_name, email")
+            .order("created_at", { ascending: false });
 
-      if (error) {
-        throw error;
-      }
+          if (error) {
+            throw error;
+          }
 
-      const nextThreads = ((data as AdoptionRequest[]) || []).map(
-        (request) => ({
-          ...request,
-          status: normalizeRequestStatus(request.status),
-        }),
+          const nextThreads = ((data as AdoptionRequest[]) || []).map(
+            (request) => ({
+              ...request,
+              status: normalizeRequestStatus(request.status),
+            }),
+          );
+
+          let latestMap: Record<string, string> = {};
+          const threadIds = nextThreads.map((t) => t.id);
+
+          if (threadIds.length > 0) {
+            const { data: msgs, error: msgError } = await supabase
+              .from("adoption_request_messages")
+              .select("request_id, message")
+              .in("request_id", threadIds)
+              .order("created_at", { ascending: false });
+
+            if (!msgError && msgs) {
+              latestMap = {};
+              msgs.forEach((m) => {
+                if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
+              });
+            }
+          }
+
+          return {
+            threads: nextThreads,
+            latestMessages: latestMap,
+          };
+        },
+        { ttlMs: 20_000 },
       );
 
-      const threadIds = nextThreads.map((t) => t.id);
-
-      if (threadIds.length > 0) {
-        const { data: msgs, error: msgError } = await supabase
-          .from("adoption_request_messages")
-          .select("request_id, message")
-          .in("request_id", threadIds)
-          .order("created_at", { ascending: false });
-
-        if (!msgError && msgs) {
-          const latestMap: Record<string, string> = {};
-          msgs.forEach((m) => {
-            if (!latestMap[m.request_id]) latestMap[m.request_id] = m.message;
-          });
-          setLatestMessages(latestMap);
-        }
-      }
+      const nextThreads = response.threads;
+      setLatestMessages(response.latestMessages);
 
       setThreads(nextThreads);
       setUnreadThreadIds((current) => {
@@ -510,6 +520,8 @@ export default function ChatScreen() {
     }
 
     setDraftMessage("");
+    await invalidateCachedPrefix("chat:");
+    await invalidateCachedPrefix("requests:");
     setSendingMessage(false);
   };
 
