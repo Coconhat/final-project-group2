@@ -581,7 +581,7 @@ export default function RequestScreen() {
     });
 
   const chatIsClosed = !!selectedRequest
-    ? normalizeRequestStatus(selectedRequest.status) !== "pending"
+    ? normalizeRequestStatus(selectedRequest.status) === "rejected"
     : false;
 
   const toggleChecklistItem = (requestId: string, item: string) => {
@@ -878,7 +878,10 @@ export default function RequestScreen() {
                 <View
                   key={request.id}
                   className="bg-surface-container-low rounded-2xl p-4"
-                  style={{ borderLeftWidth: 4, borderLeftColor: statusConfig.accent }}
+                  style={{
+                    borderLeftWidth: 4,
+                    borderLeftColor: statusConfig.accent,
+                  }}
                 >
                   <View className="flex-row justify-between items-start gap-3 mb-2">
                     <View className="flex-1">
@@ -1058,7 +1061,10 @@ export default function RequestScreen() {
                 <TouchableOpacity
                   key={request.id}
                   className="group relative bg-surface-container-low rounded-2xl p-4 flex-row items-start gap-4"
-                  style={{ borderLeftWidth: 4, borderLeftColor: statusConfig.accent }}
+                  style={{
+                    borderLeftWidth: 4,
+                    borderLeftColor: statusConfig.accent,
+                  }}
                   onPress={() => openChatForRequest(request)}
                   activeOpacity={0.85}
                 >
@@ -1234,7 +1240,7 @@ export default function RequestScreen() {
               {chatIsClosed && (
                 <View className="mb-2 px-3 py-2 rounded-xl bg-surface-container-low">
                   <Text className="text-on-surface-variant text-xs">
-                    Chat is read-only because this request is no longer pending.
+                    Chat is read-only because this request was rejected.
                   </Text>
                 </View>
               )}
@@ -1242,7 +1248,9 @@ export default function RequestScreen() {
                 <TextInput
                   value={draftMessage}
                   onChangeText={setDraftMessage}
-                  placeholder={chatIsClosed ? "Request closed" : "Write a message..."}
+                  placeholder={
+                    chatIsClosed ? "Request closed" : "Write a message..."
+                  }
                   placeholderTextColor="#a79a96"
                   multiline
                   editable={

@@ -27,7 +27,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type AdoptionRequest = {
   id: string;
@@ -806,7 +809,9 @@ export default function ChatScreen() {
                   className="h-9 px-3 rounded-full bg-surface-container-low border border-surface-container-highest flex-row items-center gap-1.5"
                 >
                   <MaterialIcons name="fact-check" size={14} color="#3e2f2b" />
-                  <Text className="text-xs font-bold text-on-surface">Verify</Text>
+                  <Text className="text-xs font-bold text-on-surface">
+                    Verify
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
