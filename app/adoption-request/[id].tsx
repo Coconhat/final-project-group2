@@ -129,6 +129,12 @@ export default function AdoptionRequestScreen() {
             "Error checking existing request:",
             existingRequestError,
           );
+          Alert.alert(
+            "Error",
+            "Could not verify your existing requests. Please try again.",
+          );
+          router.replace("/");
+          return;
         }
 
         if (existingRequest) {

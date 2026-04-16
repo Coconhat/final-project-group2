@@ -88,16 +88,19 @@ export default function PetDetailsScreen() {
         if (authData.user) {
           setIsAdmin(await resolveIsAdmin(authData.user));
 
-          const { data: requestData } = await supabase
+          const { data: requestData, error: requestError } = await supabase
             .from("adoption_requests")
             .select("id")
             .eq("pet_id", petId)
             .eq("user_id", authData.user.id)
-            .single();
+            .limit(1)
+            .maybeSingle();
 
-          if (requestData) {
-            setHasRequested(true);
+          if (requestError) {
+            console.error("Error checking existing request on pet details:", requestError);
           }
+
+          setHasRequested(!!requestData);
         }
       } catch (error) {
         console.error("Error fetching pet details:", error);

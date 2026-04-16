@@ -292,6 +292,27 @@ export default function AdminScreen() {
     }, [loadData]),
   );
 
+  const requireActiveAdminSession = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      Alert.alert("Session expired", "Please log in again.");
+      router.replace("/login");
+      return false;
+    }
+
+    const isStillAdmin = await resolveIsAdmin(user);
+    if (!isStillAdmin) {
+      Alert.alert("Access denied", "Admin privileges are required.");
+      router.replace("/");
+      return false;
+    }
+
+    return true;
+  };
+
   const updateForm = (key: keyof PetFormState, value: any) => {
     setPetForm((prev) => ({ ...prev, [key]: value }));
   };
@@ -411,6 +432,10 @@ export default function AdminScreen() {
   };
 
   const handleSavePet = async () => {
+    if (!(await requireActiveAdminSession())) {
+      return;
+    }
+
     if (
       !petForm.name ||
       !petForm.petType ||
@@ -500,6 +525,10 @@ export default function AdminScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
+            if (!(await requireActiveAdminSession())) {
+              return;
+            }
+
             const { error } = await supabase
               .from("pets")
               .delete()
@@ -687,6 +716,10 @@ export default function AdminScreen() {
           text: nextStatus === "completed" ? "Approve" : "Reject",
           style: nextStatus === "rejected" ? "destructive" : "default",
           onPress: async () => {
+            if (!(await requireActiveAdminSession())) {
+              return;
+            }
+
             const { data: updatedRequest, error } = await supabase
               .from("adoption_requests")
               .update({ status: nextStatus })

@@ -1,4 +1,4 @@
-﻿import BottomNav from "@/components/BottomNav";
+import BottomNav from "@/components/BottomNav";
 import {
   getOrSetCachedValue,
   invalidateCachedPrefix,
@@ -1115,7 +1115,7 @@ export default function RequestScreen() {
               return (
                 <TouchableOpacity
                   key={request.id}
-                  className="group relative bg-surface-container-low rounded-2xl p-4 flex-row items-start gap-4"
+                  className="relative bg-surface-container-low rounded-2xl p-4 flex-row items-start gap-4"
                   style={{
                     borderLeftWidth: 4,
                     borderLeftColor: statusConfig.accent,
