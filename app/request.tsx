@@ -36,6 +36,7 @@ import {
 
 type AdoptionRequest = {
   id: string;
+  pet_id?: string | null;
   pet_name: string | null;
   status: "pending" | "completed" | "rejected" | string;
   created_at: string;
@@ -267,7 +268,7 @@ export default function RequestScreen() {
             const { data, error } = await supabase
               .from("adoption_requests")
               .select(
-                "id, pet_name, status, created_at, full_name, email, phone, own_or_rent, housing_type, other_housing_type, has_yard, adult_count, child_count, other_pets",
+                "id, pet_id, pet_name, status, created_at, full_name, email, phone, own_or_rent, housing_type, other_housing_type, has_yard, adult_count, child_count, other_pets",
               )
               .order("created_at", { ascending: false });
 
@@ -626,7 +627,7 @@ export default function RequestScreen() {
       .update({ status: nextStatus })
       .eq("id", request.id)
       .eq("status", "pending")
-      .select("id, status")
+      .select("id, pet_id, status")
       .maybeSingle();
 
     if (error) {
@@ -644,9 +645,39 @@ export default function RequestScreen() {
 
     const confirmedStatus = normalizeRequestStatus(updatedRequest.status);
 
+    let autoRejectedIds: string[] = [];
+    const approvedPetId = updatedRequest.pet_id
+      ? String(updatedRequest.pet_id)
+      : null;
+
+    if (confirmedStatus === "completed" && approvedPetId) {
+      const { data: autoRejectedRows, error: autoRejectError } = await supabase
+        .from("adoption_requests")
+        .update({ status: "rejected" })
+        .eq("pet_id", approvedPetId)
+        .eq("status", "pending")
+        .neq("id", request.id)
+        .select("id");
+
+      if (autoRejectError) {
+        Alert.alert(
+          "Warning",
+          "Request approved, but some competing requests could not be auto-rejected.",
+        );
+      } else {
+        autoRejectedIds =
+          (autoRejectedRows as { id: string }[] | null)?.map((row) => row.id) ||
+          [];
+      }
+    }
+
     setRequests((current) =>
       current.map((item) =>
-        item.id === request.id ? { ...item, status: confirmedStatus } : item,
+        item.id === request.id
+          ? { ...item, status: confirmedStatus }
+          : autoRejectedIds.includes(item.id)
+            ? { ...item, status: "rejected" }
+            : item,
       ),
     );
 
@@ -667,10 +698,34 @@ export default function RequestScreen() {
               : "Your adoption request was not approved this time. Thank you for your interest.",
         },
       ]);
+
+      if (autoRejectedIds.length > 0) {
+        await supabase.from("adoption_request_messages").insert(
+          autoRejectedIds.map((requestId) => ({
+            request_id: requestId,
+            sender_id: currentUserId,
+            message:
+              "This pet has already been adopted by another applicant. Your request has been closed.",
+          })),
+        );
+      }
     }
 
     await invalidateCachedPrefix("requests:");
     await invalidateCachedPrefix("chat:");
+    if (confirmedStatus === "completed") {
+      await invalidateCachedPrefix("pets:");
+      if (approvedPetId) {
+        await invalidateCachedPrefix(`pet:detail:${approvedPetId}`);
+      }
+    }
+
+    if (confirmedStatus === "completed" && autoRejectedIds.length > 0) {
+      Alert.alert(
+        "Approved",
+        `This request was approved and ${autoRejectedIds.length} competing pending request(s) were automatically declined because the pet is no longer available.`,
+      );
+    }
   };
 
   const handleCancelRequest = async (request: AdoptionRequest) => {

@@ -18,6 +18,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+const ADOPTED_STATUSES = [
+  "completed",
+  "approved",
+  "approve",
+  "accepted",
+  "accept",
+  "confirmed",
+];
+
 export default function PetDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -25,6 +34,7 @@ export default function PetDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
+  const [isAdopted, setIsAdopted] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -57,6 +67,21 @@ export default function PetDetailsScreen() {
 
         setPet(petData);
         setIsFavorite(petData.is_favorite || false);
+
+        const { data: adoptedRequest, error: adoptedRequestError } =
+          await supabase
+            .from("adoption_requests")
+            .select("id")
+            .eq("pet_id", petId)
+            .in("status", ADOPTED_STATUSES)
+            .limit(1)
+            .maybeSingle();
+
+        if (adoptedRequestError) {
+          console.error("Error checking adopted status:", adoptedRequestError);
+        }
+
+        setIsAdopted(!!adoptedRequest);
 
         // Check if current user has already requested this pet
         const { data: authData } = await supabase.auth.getUser();
@@ -299,15 +324,25 @@ export default function PetDetailsScreen() {
           {!isAdmin && (
             <TouchableOpacity
               className={`flex-1 h-14 rounded-full flex-row items-center justify-center shadow-sm ${
-                hasRequested ? "bg-surface-container-highest" : "bg-primary"
+                  hasRequested || isAdopted
+                    ? "bg-surface-container-highest"
+                    : "bg-primary"
               }`}
-              disabled={hasRequested}
+                disabled={hasRequested || isAdopted}
               onPress={async () => {
                 const { data: authData } = await supabase.auth.getUser();
                 if (!authData.user) {
                   router.push("/login");
                   return;
                 }
+
+                  if (isAdopted) {
+                    Alert.alert(
+                      "Pet already adopted",
+                      "This pet is no longer accepting adoption requests.",
+                    );
+                    return;
+                  }
 
                 if (await resolveIsAdmin(authData.user)) {
                   Alert.alert(
@@ -332,10 +367,16 @@ export default function PetDetailsScreen() {
             >
               <Text
                 className={`font-headline font-bold text-lg ${
-                  hasRequested ? "text-on-surface-variant" : "text-on-primary"
+                  hasRequested || isAdopted
+                    ? "text-on-surface-variant"
+                    : "text-on-primary"
                 }`}
               >
-                {hasRequested ? "Already Requested" : "Start Adoption Request"}
+                {isAdopted
+                  ? "Already Adopted"
+                  : hasRequested
+                    ? "Already Requested"
+                    : "Start Adoption Request"}
               </Text>
             </TouchableOpacity>
           )}

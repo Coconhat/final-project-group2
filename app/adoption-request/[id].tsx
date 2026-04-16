@@ -23,6 +23,15 @@ import { z } from "zod";
 
 type AdoptionFormData = z.infer<typeof adoptionRequestSchema>;
 
+const ADOPTED_STATUSES = [
+  "completed",
+  "approved",
+  "approve",
+  "accepted",
+  "accept",
+  "confirmed",
+];
+
 export default function AdoptionRequestScreen() {
   const { id, name } = useLocalSearchParams();
   const router = useRouter();
@@ -51,42 +60,89 @@ export default function AdoptionRequestScreen() {
 
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
 
+  const isPetAlreadyAdopted = async (petId: string) => {
+    const { data, error } = await supabase
+      .from("adoption_requests")
+      .select("id")
+      .eq("pet_id", petId)
+      .in("status", ADOPTED_STATUSES)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return !!data;
+  };
+
   useEffect(() => {
     const checkAuthAndPrefill = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const petId = String(id || "");
+        if (!petId) {
+          Alert.alert("Invalid pet", "This pet could not be loaded.");
+          router.replace("/");
+          return;
+        }
 
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (await resolveIsAdmin(user)) {
-        Alert.alert("Admin account", "Admins cannot submit adoption requests.");
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        if (await resolveIsAdmin(user)) {
+          Alert.alert(
+            "Admin account",
+            "Admins cannot submit adoption requests.",
+          );
+          router.replace("/");
+          return;
+        }
+
+        if (await isPetAlreadyAdopted(petId)) {
+          Alert.alert(
+            "Pet not available",
+            "This pet has already been adopted and is no longer accepting requests.",
+          );
+          router.replace({ pathname: "/pet/[id]", params: { id: petId } });
+          return;
+        }
+
+        if (user.email) setValue("email", user.email);
+
+        const { data: existingRequest, error: existingRequestError } =
+          await supabase
+            .from("adoption_requests")
+            .select("id")
+            .eq("pet_id", petId)
+            .eq("user_id", user.id)
+            .limit(1)
+            .maybeSingle();
+
+        if (existingRequestError) {
+          console.error("Error checking existing request:", existingRequestError);
+        }
+
+        if (existingRequest) {
+          Alert.alert(
+            "Already Requested",
+            "You have already applied for this pet!",
+          );
+          router.replace("/");
+          return;
+        }
+
+        setIsLoadingAuth(false);
+      } catch (error) {
+        console.error("Auth/prefill check failed:", error);
+        Alert.alert("Error", "Could not validate this request right now.");
         router.replace("/");
-        return;
       }
-
-      if (user.email) setValue("email", user.email);
-
-      const { data: existingRequest } = await supabase
-        .from("adoption_requests")
-        .select("id")
-        .eq("pet_id", String(id))
-        .eq("user_id", user.id)
-        .single();
-
-      if (existingRequest) {
-        Alert.alert(
-          "Already Requested",
-          "You have already applied for this pet!",
-        );
-        router.replace("/");
-        return;
-      }
-
-      setIsLoadingAuth(false);
     };
     checkAuthAndPrefill();
   }, [id, setValue, router]);
@@ -119,9 +175,26 @@ export default function AdoptionRequestScreen() {
         return;
       }
 
+      const petId = String(id || "");
+      if (!petId) {
+        Alert.alert("Error", "Invalid pet selected.");
+        return;
+      }
+
+      if (await isPetAlreadyAdopted(petId)) {
+        Alert.alert(
+          "Pet no longer available",
+          "This pet has already been adopted. Please choose another pet.",
+        );
+        await invalidateCachedPrefix("pets:");
+        await invalidateCachedPrefix(`pet:detail:${petId}`);
+        router.replace("/");
+        return;
+      }
+
       const { error } = await supabase.from("adoption_requests").insert([
         {
-          pet_id: String(id),
+          pet_id: petId,
           pet_name: name ? String(name) : "Unknown Pet",
           user_id: user.id,
           full_name: data.fullName,
