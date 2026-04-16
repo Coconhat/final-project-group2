@@ -572,14 +572,20 @@ export default function AdminScreen() {
     const messageText = draftMessage.trim();
     if (!messageText || sendingMessage) return;
 
+    const requestId = selectedRequest.id;
+
     setSendingMessage(true);
-    const { error } = await supabase.from("adoption_request_messages").insert([
-      {
-        request_id: selectedRequest.id,
-        sender_id: adminUserId,
-        message: messageText,
-      },
-    ]);
+    const { data, error } = await supabase
+      .from("adoption_request_messages")
+      .insert([
+        {
+          request_id: requestId,
+          sender_id: adminUserId,
+          message: messageText,
+        },
+      ])
+      .select("id, request_id, sender_id, message, created_at")
+      .single();
 
     if (error) {
       if (error.code === "42P01") {
@@ -589,6 +595,16 @@ export default function AdminScreen() {
       }
       setSendingMessage(false);
       return;
+    }
+
+    if (data) {
+      const inserted = data as RequestMessage;
+      setMessages((current) => {
+        if (current.some((message) => message.id === inserted.id)) {
+          return current;
+        }
+        return [...current, inserted];
+      });
     }
 
     setDraftMessage("");

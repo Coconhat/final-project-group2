@@ -83,22 +83,34 @@ const normalizeRequestStatus = (status: string | null | undefined) => {
 
 const STATUS_META: Record<
   string,
-  { bg: string; text: string; label: "Pending" | "Completed" | "Rejected" }
+  {
+    bg: string;
+    text: string;
+    label: "Pending" | "Completed" | "Rejected";
+    icon: "schedule" | "check-circle" | "cancel";
+    accent: string;
+  }
 > = {
   pending: {
-    bg: "bg-surface-container-highest",
-    text: "text-on-surface",
+    bg: "bg-primary/10",
+    text: "text-primary",
     label: "Pending",
+    icon: "schedule",
+    accent: "#fd8863",
   },
   completed: {
     bg: "bg-secondary/10",
     text: "text-secondary",
     label: "Completed",
+    icon: "check-circle",
+    accent: "#006b64",
   },
   rejected: {
     bg: "bg-error-container/20 border border-error/20",
     text: "text-error",
     label: "Rejected",
+    icon: "cancel",
+    accent: "#a83836",
   },
 };
 
@@ -508,15 +520,21 @@ export default function RequestScreen() {
       return;
     }
 
+    const requestId = selectedRequest.id;
+
     setSendingMessage(true);
 
-    const { error } = await supabase.from("adoption_request_messages").insert([
-      {
-        request_id: selectedRequest.id,
-        sender_id: currentUserId,
-        message: messageText,
-      },
-    ]);
+    const { data, error } = await supabase
+      .from("adoption_request_messages")
+      .insert([
+        {
+          request_id: requestId,
+          sender_id: currentUserId,
+          message: messageText,
+        },
+      ])
+      .select("id, request_id, sender_id, message, created_at")
+      .single();
 
     if (error) {
       if (error.code === "42P01") {
@@ -528,9 +546,24 @@ export default function RequestScreen() {
       return;
     }
 
+    if (data) {
+      const inserted = data as RequestMessage;
+      setMessages((current) => {
+        if (current.some((message) => message.id === inserted.id)) {
+          return current;
+        }
+        return [...current, inserted];
+      });
+      setLatestMessages((currentMap) => ({
+        ...currentMap,
+        [requestId]: inserted.message,
+      }));
+    }
+
     setDraftMessage("");
     await invalidateCachedPrefix("requests:");
     await invalidateCachedPrefix("chat:");
+    flatListRef.current?.scrollToEnd({ animated: true });
     setSendingMessage(false);
   };
 
@@ -540,7 +573,16 @@ export default function RequestScreen() {
       minute: "2-digit",
     });
 
-  const chatIsClosed = false;
+  const formatRequestDate = (isoDate: string) =>
+    new Date(isoDate).toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  const chatIsClosed = !!selectedRequest
+    ? normalizeRequestStatus(selectedRequest.status) !== "pending"
+    : false;
 
   const toggleChecklistItem = (requestId: string, item: string) => {
     setChecklistState((current) => ({
@@ -696,19 +738,23 @@ export default function RequestScreen() {
     const isMine = item.sender_id === currentUserId;
 
     return (
-      <View className={`mb-2 px-2 ${isMine ? "items-end" : "items-start"}`}>
+      <View className={`mb-2.5 px-2 ${isMine ? "items-end" : "items-start"}`}>
         <View
-          className={`max-w-[82%] rounded-3xl px-4 py-3 ${
+          className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm ${
             isMine
               ? "bg-primary rounded-br-md"
               : "bg-surface-container-high rounded-bl-md"
           }`}
         >
-          <Text className={isMine ? "text-on-primary" : "text-on-surface"}>
+          <Text
+            className={`text-[14px] leading-5 ${
+              isMine ? "text-on-primary" : "text-on-surface"
+            }`}
+          >
             {item.message}
           </Text>
         </View>
-        <Text className="text-[10px] text-on-surface-variant mt-1 px-1">
+        <Text className="text-[10px] text-on-surface-variant/90 mt-1 px-1">
           {formatMessageTime(item.created_at)}
         </Text>
       </View>
@@ -718,15 +764,15 @@ export default function RequestScreen() {
   return (
     <View className="flex-1 bg-background">
       <ScrollView contentContainerClassName="pt-24 pb-32 px-4 max-w-2xl mx-auto min-h-screen">
-        <View className="mb-8 px-2">
-          <Text className="font-headline font-extrabold text-3xl text-on-background leading-tight">
+        <View className="mb-6 px-2">
+          <Text className="font-headline font-extrabold text-3xl text-on-background leading-tight tracking-tight">
             {isAdmin === true
               ? "Review Requests"
               : isAdmin === false
                 ? "Your Requests"
                 : "Requests"}
           </Text>
-          <Text className="text-on-surface-variant mt-2 text-sm">
+          <Text className="text-on-surface-variant mt-2 text-sm leading-5">
             {isAdmin === true
               ? "Check applications and complete the checklist before giving a verdict."
               : isAdmin === false
@@ -736,16 +782,18 @@ export default function RequestScreen() {
         </View>
 
         {isAdmin === true && (
-          <View className="mb-4 px-2">
-            <View className="bg-surface-container-low rounded-full p-1 flex-row">
+          <View className="mb-5 px-2">
+            <View className="bg-surface-container-low rounded-2xl p-1.5 flex-row border border-surface-container-highest">
               <TouchableOpacity
                 onPress={() => setAdminFilter("pending")}
-                className={`flex-1 h-10 rounded-full items-center justify-center ${
-                  adminFilter === "pending" ? "bg-primary" : "bg-transparent"
+                className={`flex-1 h-10 rounded-xl items-center justify-center ${
+                  adminFilter === "pending"
+                    ? "bg-primary"
+                    : "bg-transparent border border-transparent"
                 }`}
               >
                 <Text
-                  className={`font-bold ${
+                  className={`font-semibold text-sm ${
                     adminFilter === "pending"
                       ? "text-on-primary"
                       : "text-on-surface"
@@ -757,12 +805,14 @@ export default function RequestScreen() {
 
               <TouchableOpacity
                 onPress={() => setAdminFilter("completed")}
-                className={`flex-1 h-10 rounded-full items-center justify-center ${
-                  adminFilter === "completed" ? "bg-primary" : "bg-transparent"
+                className={`flex-1 h-10 rounded-xl items-center justify-center ${
+                  adminFilter === "completed"
+                    ? "bg-primary"
+                    : "bg-transparent border border-transparent"
                 }`}
               >
                 <Text
-                  className={`font-bold ${
+                  className={`font-semibold text-sm ${
                     adminFilter === "completed"
                       ? "text-on-primary"
                       : "text-on-surface"
@@ -819,14 +869,16 @@ export default function RequestScreen() {
             )}
           </View>
         ) : isAdmin === true ? (
-          <View className="space-y-3">
+          <View className="gap-3">
             {filteredAdminRequests.map((request) => {
               const statusConfig = getStatusColor(request.status);
               const done = checklistComplete(request.id);
+              const normalizedStatus = normalizeRequestStatus(request.status);
               return (
                 <View
                   key={request.id}
-                  className="bg-surface-container-low rounded-2xl p-4 mb-3"
+                  className="bg-surface-container-low rounded-2xl p-4"
+                  style={{ borderLeftWidth: 4, borderLeftColor: statusConfig.accent }}
                 >
                   <View className="flex-row justify-between items-start gap-3 mb-2">
                     <View className="flex-1">
@@ -850,8 +902,13 @@ export default function RequestScreen() {
                       </Text>
                     </View>
                     <View
-                      className={`px-3 py-1 rounded-full ${statusConfig.bg}`}
+                      className={`px-3 py-1 rounded-full flex-row items-center gap-1.5 ${statusConfig.bg}`}
                     >
+                      <MaterialIcons
+                        name={statusConfig.icon}
+                        size={12}
+                        color={statusConfig.accent}
+                      />
                       <Text
                         className={`uppercase text-[10px] font-bold ${statusConfig.text}`}
                       >
@@ -866,7 +923,7 @@ export default function RequestScreen() {
                         Applicant details
                       </Text>
                       <Text className="text-xs text-on-surface-variant">
-                        {new Date(request.created_at).toLocaleDateString()}
+                        {formatRequestDate(request.created_at)}
                       </Text>
                     </View>
                     <View className="flex-row flex-wrap gap-2">
@@ -938,7 +995,7 @@ export default function RequestScreen() {
                         <TouchableOpacity
                           key={item}
                           onPress={() => toggleChecklistItem(request.id, item)}
-                          disabled={request.status !== "pending"}
+                          disabled={normalizedStatus !== "pending"}
                           className="flex-row items-center py-2"
                         >
                           <MaterialIcons
@@ -967,9 +1024,9 @@ export default function RequestScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleVerdict(request, "completed")}
-                      disabled={request.status !== "pending" || !done}
+                      disabled={normalizedStatus !== "pending" || !done}
                       className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        request.status !== "pending" || !done
+                        normalizedStatus !== "pending" || !done
                           ? "bg-secondary/30"
                           : "bg-secondary"
                       }`}
@@ -978,9 +1035,9 @@ export default function RequestScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleVerdict(request, "rejected")}
-                      disabled={request.status !== "pending" || !done}
+                      disabled={normalizedStatus !== "pending" || !done}
                       className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        request.status !== "pending" || !done
+                        normalizedStatus !== "pending" || !done
                           ? "bg-error/30"
                           : "bg-error"
                       }`}
@@ -993,18 +1050,21 @@ export default function RequestScreen() {
             })}
           </View>
         ) : (
-          <View className="space-y-3">
+          <View className="gap-3">
             {requests.map((request) => {
               const statusConfig = getStatusColor(request.status);
+              const normalizedStatus = normalizeRequestStatus(request.status);
               return (
                 <TouchableOpacity
                   key={request.id}
-                  className="group relative bg-surface-container-low rounded-xl p-5 flex-row items-start gap-4 mb-3"
+                  className="group relative bg-surface-container-low rounded-2xl p-4 flex-row items-start gap-4"
+                  style={{ borderLeftWidth: 4, borderLeftColor: statusConfig.accent }}
                   onPress={() => openChatForRequest(request)}
+                  activeOpacity={0.85}
                 >
                   <View className="relative flex-shrink-0">
-                    <View className="w-16 h-16 rounded-full bg-surface-container-high items-center justify-center border-2 border-surface-container-highest">
-                      <MaterialIcons name="pets" size={32} color="#a79a96" />
+                    <View className="w-14 h-14 rounded-2xl bg-surface-container-high items-center justify-center border border-surface-container-highest">
+                      <MaterialIcons name="pets" size={26} color="#a79a96" />
                     </View>
                   </View>
                   <View className="flex-1">
@@ -1015,41 +1075,41 @@ export default function RequestScreen() {
                       >
                         {request.pet_name || "Unknown Pet"}
                       </Text>
-                      <Text className="text-xs font-semibold text-on-surface-variant">
-                        {new Date(request.created_at).toLocaleDateString()}
+                      <Text className="text-xs font-medium text-on-surface-variant">
+                        {formatRequestDate(request.created_at)}
                       </Text>
                     </View>
                     <Text
-                      className="text-on-surface-variant text-sm mb-3"
-                      numberOfLines={1}
+                      className="text-on-surface-variant text-sm mb-3 leading-5"
+                      numberOfLines={2}
                     >
                       {latestMessages[request.id] ||
-                        (request.status === "pending"
+                        (normalizedStatus === "pending"
                           ? "Your application is under review."
-                          : request.status === "completed"
+                          : normalizedStatus === "completed"
                             ? "Congratulations on your adoption!"
                             : "Unfortunately, this request was not approved.")}
                     </Text>
                     <View className="flex-row flex-wrap gap-2">
                       <View
-                        className={`px-3 py-1 rounded-full ${statusConfig.bg}`}
+                        className={`px-3 py-1 rounded-full flex-row items-center gap-1.5 ${statusConfig.bg}`}
                       >
+                        <MaterialIcons
+                          name={statusConfig.icon}
+                          size={12}
+                          color={statusConfig.accent}
+                        />
                         <Text
                           className={`text-[10px] font-bold tracking-wider uppercase ${statusConfig.text}`}
                         >
                           {statusConfig.label}
                         </Text>
                       </View>
-                      <View className="px-3 py-1 rounded-full bg-primary/10">
-                        <Text className="text-[10px] font-bold tracking-wider uppercase text-primary">
-                          Open Chat
-                        </Text>
-                      </View>
                     </View>
-                    {request.status === "pending" && (
+                    {normalizedStatus === "pending" && (
                       <TouchableOpacity
                         onPress={() => handleCancelRequest(request)}
-                        className="mt-3 self-start px-3 py-2 rounded-full bg-error/10"
+                        className="mt-3 self-start px-3 py-2 rounded-full bg-error/10 border border-error/20"
                       >
                         <Text className="text-error text-xs font-bold uppercase tracking-wider">
                           Cancel Request
@@ -1089,10 +1149,15 @@ export default function RequestScreen() {
               {selectedRequest && (
                 <View className="flex-row items-center gap-2 mt-0.5">
                   <View
-                    className={`px-2.5 py-0.5 rounded-full ${
+                    className={`px-2.5 py-0.5 rounded-full flex-row items-center gap-1.5 ${
                       getStatusColor(selectedRequest.status).bg
                     }`}
                   >
+                    <MaterialIcons
+                      name={getStatusColor(selectedRequest.status).icon}
+                      size={12}
+                      color={getStatusColor(selectedRequest.status).accent}
+                    />
                     <Text
                       className={`text-[10px] uppercase font-bold ${
                         getStatusColor(selectedRequest.status).text
@@ -1163,6 +1228,7 @@ export default function RequestScreen() {
 
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 4 : 0}
           >
             <View className="px-3 pt-2 pb-6 border-t border-surface-container-highest bg-background">
               {chatIsClosed && (
@@ -1176,7 +1242,7 @@ export default function RequestScreen() {
                 <TextInput
                   value={draftMessage}
                   onChangeText={setDraftMessage}
-                  placeholder="Write a messageasdasdasd"
+                  placeholder={chatIsClosed ? "Request closed" : "Write a message..."}
                   placeholderTextColor="#a79a96"
                   multiline
                   editable={

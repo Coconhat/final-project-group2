@@ -27,7 +27,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type AdoptionRequest = {
   id: string;
@@ -104,6 +104,7 @@ const getInitialChatCache = () => {
 
 export default function ChatScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ requestId?: string | string[] }>();
   const requestIdFromParams = Array.isArray(params.requestId)
     ? params.requestId[0]
@@ -533,15 +534,21 @@ export default function ChatScreen() {
       return;
     }
 
+    const requestId = selectedRequest.id;
+
     setSendingMessage(true);
 
-    const { error } = await supabase.from("adoption_request_messages").insert([
-      {
-        request_id: selectedRequest.id,
-        sender_id: currentUserId,
-        message: text,
-      },
-    ]);
+    const { data, error } = await supabase
+      .from("adoption_request_messages")
+      .insert([
+        {
+          request_id: requestId,
+          sender_id: currentUserId,
+          message: text,
+        },
+      ])
+      .select("id, request_id, sender_id, message, created_at")
+      .single();
 
     if (error) {
       if (error.code === "42P01") {
@@ -551,9 +558,24 @@ export default function ChatScreen() {
       return;
     }
 
+    if (data) {
+      const inserted = data as RequestMessage;
+      setMessages((current) => {
+        if (current.some((message) => message.id === inserted.id)) {
+          return current;
+        }
+        return [...current, inserted];
+      });
+      setLatestMessages((current) => ({
+        ...current,
+        [requestId]: inserted.message,
+      }));
+    }
+
     setDraftMessage("");
     await invalidateCachedPrefix("chat:");
     await invalidateCachedPrefix("requests:");
+    flatListRef.current?.scrollToEnd({ animated: true });
     setSendingMessage(false);
   };
 
@@ -778,6 +800,15 @@ export default function ChatScreen() {
                   {selectedRequest.email ? ` | ${selectedRequest.email}` : ""}
                 </Text>
               </View>
+              {normalizeRequestStatus(selectedRequest.status) === "pending" && (
+                <TouchableOpacity
+                  onPress={() => router.push("/request")}
+                  className="h-9 px-3 rounded-full bg-surface-container-low border border-surface-container-highest flex-row items-center gap-1.5"
+                >
+                  <MaterialIcons name="fact-check" size={14} color="#3e2f2b" />
+                  <Text className="text-xs font-bold text-on-surface">Verify</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {chatTableMissing ? (
@@ -836,8 +867,11 @@ export default function ChatScreen() {
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-              <View className="px-3 pt-2 pb-32 border-t border-surface-container-highest bg-background">
-                <View className="flex-row items-end gap-2 mb-4">
+              <View
+                className="px-3 pt-2 border-t border-surface-container-highest bg-background"
+                style={{ paddingBottom: Math.max(insets.bottom + 8, 12) }}
+              >
+                <View className="flex-row items-end gap-2">
                   <TextInput
                     value={draftMessage}
                     onChangeText={setDraftMessage}

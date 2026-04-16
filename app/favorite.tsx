@@ -57,8 +57,7 @@ export default function FavoritesScreen() {
           } = await supabase.auth.getUser();
 
           if (user) {
-            const requestStatusCacheKey =
-              `${USER_REQUEST_STATUS_CACHE_PREFIX}${user.id}`;
+            const requestStatusCacheKey = `${USER_REQUEST_STATUS_CACHE_PREFIX}${user.id}`;
             const cachedRequestStatus = await getOrSetCachedValue<
               Record<string, string>
             >(
@@ -75,10 +74,10 @@ export default function FavoritesScreen() {
                 }
 
                 return buildUserRequestStatusMap(
-                  ((data as {
+                  (data as {
                     pet_id: string | null;
                     status: string | null;
-                  }[]) || []),
+                  }[]) || [],
                 );
               },
               { ttlMs: 20_000 },
