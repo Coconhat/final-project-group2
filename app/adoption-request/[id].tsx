@@ -125,7 +125,10 @@ export default function AdoptionRequestScreen() {
             .maybeSingle();
 
         if (existingRequestError) {
-          console.error("Error checking existing request:", existingRequestError);
+          console.error(
+            "Error checking existing request:",
+            existingRequestError,
+          );
         }
 
         if (existingRequest) {

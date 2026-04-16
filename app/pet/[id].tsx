@@ -324,11 +324,11 @@ export default function PetDetailsScreen() {
           {!isAdmin && (
             <TouchableOpacity
               className={`flex-1 h-14 rounded-full flex-row items-center justify-center shadow-sm ${
-                  hasRequested || isAdopted
-                    ? "bg-surface-container-highest"
-                    : "bg-primary"
+                hasRequested || isAdopted
+                  ? "bg-surface-container-highest"
+                  : "bg-primary"
               }`}
-                disabled={hasRequested || isAdopted}
+              disabled={hasRequested || isAdopted}
               onPress={async () => {
                 const { data: authData } = await supabase.auth.getUser();
                 if (!authData.user) {
@@ -336,13 +336,13 @@ export default function PetDetailsScreen() {
                   return;
                 }
 
-                  if (isAdopted) {
-                    Alert.alert(
-                      "Pet already adopted",
-                      "This pet is no longer accepting adoption requests.",
-                    );
-                    return;
-                  }
+                if (isAdopted) {
+                  Alert.alert(
+                    "Pet already adopted",
+                    "This pet is no longer accepting adoption requests.",
+                  );
+                  return;
+                }
 
                 if (await resolveIsAdmin(authData.user)) {
                   Alert.alert(

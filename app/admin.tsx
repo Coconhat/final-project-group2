@@ -709,7 +709,9 @@ export default function AdminScreen() {
               return;
             }
 
-            const confirmedStatus = String(updatedRequest.status || "pending").toLowerCase();
+            const confirmedStatus = String(
+              updatedRequest.status || "pending",
+            ).toLowerCase();
             let autoRejectedIds: string[] = [];
             const approvedPetId = updatedRequest.pet_id
               ? String(updatedRequest.pet_id)
@@ -744,7 +746,9 @@ export default function AdminScreen() {
                   ? {
                       ...item,
                       status:
-                        confirmedStatus === "completed" ? "completed" : "rejected",
+                        confirmedStatus === "completed"
+                          ? "completed"
+                          : "rejected",
                     }
                   : autoRejectedIds.includes(item.id)
                     ? { ...item, status: "rejected" }
@@ -757,7 +761,9 @@ export default function AdminScreen() {
                 ? {
                     ...current,
                     status:
-                      confirmedStatus === "completed" ? "completed" : "rejected",
+                      confirmedStatus === "completed"
+                        ? "completed"
+                        : "rejected",
                   }
                 : current,
             );
