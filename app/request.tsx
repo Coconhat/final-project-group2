@@ -23,6 +23,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -175,6 +176,10 @@ export default function RequestScreen() {
   const [chatTableMissing, setChatTableMissing] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [verdictRequestId, setVerdictRequestId] = useState<string | null>(
+    null,
+  );
   const messageChannelRef = useRef<any>(null);
   const requestStatusChannelRef = useRef<any>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -345,6 +350,12 @@ export default function RequestScreen() {
       void fetchRequests();
     }, [fetchRequests]),
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchRequests();
+    setRefreshing(false);
+  }, [fetchRequests]);
 
   useEffect(() => {
     const subscribeToRequestUpdates = async () => {
@@ -622,108 +633,123 @@ export default function RequestScreen() {
       return;
     }
 
-    const { data: updatedRequest, error } = await supabase
-      .from("adoption_requests")
-      .update({ status: nextStatus })
-      .eq("id", request.id)
-      .eq("status", "pending")
-      .select("id, pet_id, status")
-      .maybeSingle();
-
-    if (error) {
-      Alert.alert("Update failed", error.message);
+    if (verdictRequestId) {
       return;
     }
 
-    if (!updatedRequest) {
-      Alert.alert(
-        "Update failed",
-        "Could not update this request in the database. Please check your Supabase update policy for admins.",
-      );
-      return;
-    }
+    setVerdictRequestId(request.id);
 
-    const confirmedStatus = normalizeRequestStatus(updatedRequest.status);
+    try {
 
-    let autoRejectedIds: string[] = [];
-    const approvedPetId = updatedRequest.pet_id
-      ? String(updatedRequest.pet_id)
-      : null;
-
-    if (confirmedStatus === "completed" && approvedPetId) {
-      const { data: autoRejectedRows, error: autoRejectError } = await supabase
+      const { data: updatedRequest, error } = await supabase
         .from("adoption_requests")
-        .update({ status: "rejected" })
-        .eq("pet_id", approvedPetId)
+        .update({ status: nextStatus })
+        .eq("id", request.id)
         .eq("status", "pending")
-        .neq("id", request.id)
-        .select("id");
+        .select("id, pet_id, status")
+        .maybeSingle();
 
-      if (autoRejectError) {
-        Alert.alert(
-          "Warning",
-          "Request approved, but some competing requests could not be auto-rejected.",
-        );
-      } else {
-        autoRejectedIds =
-          (autoRejectedRows as { id: string }[] | null)?.map((row) => row.id) ||
-          [];
+      if (error) {
+        Alert.alert("Update failed", error.message);
+        return;
       }
-    }
 
-    setRequests((current) =>
-      current.map((item) =>
-        item.id === request.id
-          ? { ...item, status: confirmedStatus }
-          : autoRejectedIds.includes(item.id)
-            ? { ...item, status: "rejected" }
-            : item,
-      ),
-    );
+      if (!updatedRequest) {
+        Alert.alert(
+          "Update failed",
+          "Could not update this request in the database. Please check your Supabase update policy for admins.",
+        );
+        return;
+      }
 
-    setSelectedRequest((current) =>
-      current && current.id === request.id
-        ? { ...current, status: confirmedStatus }
-        : current,
-    );
+      const confirmedStatus = normalizeRequestStatus(updatedRequest.status);
 
-    if (currentUserId) {
-      await supabase.from("adoption_request_messages").insert([
-        {
-          request_id: request.id,
-          sender_id: currentUserId,
-          message:
-            confirmedStatus === "completed"
-              ? "Your adoption request has been approved. Please give us a preferred date and time to pick up your pet."
-              : "Your adoption request was not approved this time. Thank you for your interest.",
-        },
-      ]);
+      let autoRejectedIds: string[] = [];
+      const approvedPetId = updatedRequest.pet_id
+        ? String(updatedRequest.pet_id)
+        : null;
 
-      if (autoRejectedIds.length > 0) {
-        await supabase.from("adoption_request_messages").insert(
-          autoRejectedIds.map((requestId) => ({
-            request_id: requestId,
+      if (confirmedStatus === "completed" && approvedPetId) {
+        const { data: autoRejectedRows, error: autoRejectError } =
+          await supabase
+            .from("adoption_requests")
+            .update({ status: "rejected" })
+            .eq("pet_id", approvedPetId)
+            .eq("status", "pending")
+            .neq("id", request.id)
+            .select("id");
+
+        if (autoRejectError) {
+          Alert.alert(
+            "Warning",
+            "Request approved, but some competing requests could not be auto-rejected.",
+          );
+        } else {
+          autoRejectedIds =
+            (autoRejectedRows as { id: string }[] | null)?.map(
+              (row) => row.id,
+            ) || [];
+        }
+      }
+
+      setRequests((current) =>
+        current.map((item) =>
+          item.id === request.id
+            ? { ...item, status: confirmedStatus }
+            : autoRejectedIds.includes(item.id)
+              ? { ...item, status: "rejected" }
+              : item,
+        ),
+      );
+
+      setSelectedRequest((current) =>
+        current && current.id === request.id
+          ? { ...current, status: confirmedStatus }
+          : current,
+      );
+
+      if (currentUserId) {
+        await supabase.from("adoption_request_messages").insert([
+          {
+            request_id: request.id,
             sender_id: currentUserId,
             message:
-              "This pet has already been adopted by another applicant. Your request has been closed.",
-          })),
+              confirmedStatus === "completed"
+                ? "Your adoption request has been approved. Please give us a preferred date and time to pick up your pet."
+                : "Your adoption request was not approved this time. Thank you for your interest.",
+          },
+        ]);
+
+        if (autoRejectedIds.length > 0) {
+          await supabase.from("adoption_request_messages").insert(
+            autoRejectedIds.map((requestId) => ({
+              request_id: requestId,
+              sender_id: currentUserId,
+              message:
+                "This pet has already been adopted by another applicant. Your request has been closed.",
+            })),
+          );
+        }
+      }
+
+      await invalidateCachedPrefix("requests:");
+      await invalidateCachedPrefix("chat:");
+      if (confirmedStatus === "completed") {
+        await invalidateCachedPrefix("pets:");
+        if (approvedPetId) {
+          await invalidateCachedPrefix(`pet:detail:${approvedPetId}`);
+        }
+      }
+
+      if (confirmedStatus === "completed" && autoRejectedIds.length > 0) {
+        Alert.alert(
+          "Approved",
+          `This request was approved and ${autoRejectedIds.length} competing pending request(s) were automatically declined because the pet is no longer available.`,
         );
       }
-    }
-
-    await invalidateCachedPrefix("requests:");
-    await invalidateCachedPrefix("chat:");
-    if (confirmedStatus === "completed") {
-      await invalidateCachedPrefix("pets:");
-      if (approvedPetId) {
-        await invalidateCachedPrefix(`pet:detail:${approvedPetId}`);
-      }
-    }
-
-    if (confirmedStatus === "completed" && autoRejectedIds.length > 0) {
-      Alert.alert(
-        "Approved",
-        `This request was approved and ${autoRejectedIds.length} competing pending request(s) were automatically declined because the pet is no longer available.`,
+    } finally {
+      setVerdictRequestId((current) =>
+        current === request.id ? null : current,
       );
     }
   };
@@ -818,7 +844,16 @@ export default function RequestScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView contentContainerClassName="pt-24 pb-32 px-4 max-w-2xl mx-auto min-h-screen">
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#fd8863"
+          />
+        }
+        contentContainerClassName="pt-24 pb-32 px-4 max-w-2xl mx-auto min-h-screen"
+      >
         <View className="mb-6 px-2">
           <Text className="font-headline font-extrabold text-3xl text-on-background leading-tight tracking-tight">
             {isAdmin === true
@@ -929,6 +964,8 @@ export default function RequestScreen() {
               const statusConfig = getStatusColor(request.status);
               const done = checklistComplete(request.id);
               const normalizedStatus = normalizeRequestStatus(request.status);
+              const isVerdictLoading = verdictRequestId === request.id;
+              const verdictBusy = verdictRequestId !== null;
               return (
                 <View
                   key={request.id}
@@ -1074,6 +1111,7 @@ export default function RequestScreen() {
                   <View className="flex-row gap-3">
                     <TouchableOpacity
                       onPress={() => openChatForRequest(request)}
+                      disabled={isVerdictLoading}
                       className="h-11 px-4 rounded-full bg-surface-container-highest items-center justify-center"
                     >
                       <Text className="text-on-surface font-bold">
@@ -1082,27 +1120,44 @@ export default function RequestScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleVerdict(request, "completed")}
-                      disabled={normalizedStatus !== "pending" || !done}
+                      disabled={
+                        verdictBusy || normalizedStatus !== "pending" || !done
+                      }
                       className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        normalizedStatus !== "pending" || !done
+                        verdictBusy || normalizedStatus !== "pending" || !done
                           ? "bg-secondary/30"
                           : "bg-secondary"
                       }`}
                     >
-                      <Text className="text-white font-bold">Approve</Text>
+                      {isVerdictLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text className="text-white font-bold">Approve</Text>
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleVerdict(request, "rejected")}
-                      disabled={normalizedStatus !== "pending" || !done}
+                      disabled={
+                        verdictBusy || normalizedStatus !== "pending" || !done
+                      }
                       className={`flex-1 h-11 rounded-full items-center justify-center ${
-                        normalizedStatus !== "pending" || !done
+                        verdictBusy || normalizedStatus !== "pending" || !done
                           ? "bg-error/30"
                           : "bg-error"
                       }`}
                     >
-                      <Text className="text-white font-bold">Reject</Text>
+                      {isVerdictLoading ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text className="text-white font-bold">Reject</Text>
+                      )}
                     </TouchableOpacity>
                   </View>
+                  {normalizedStatus === "pending" && !done && (
+                    <Text className="text-xs text-on-surface-variant mt-2 px-1">
+                      Complete all checklist items to enable Approve or Reject.
+                    </Text>
+                  )}
                 </View>
               );
             })}

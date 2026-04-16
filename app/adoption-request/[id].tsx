@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -59,6 +60,7 @@ export default function AdoptionRequestScreen() {
   });
 
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const isPetAlreadyAdopted = async (petId: string) => {
     const { data, error } = await supabase
@@ -169,6 +171,11 @@ export default function AdoptionRequestScreen() {
   const housingTypeWatch = watch("housingType");
 
   const submitApplicationToDatabase = async (data: AdoptionFormData) => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const {
         data: { user },
@@ -244,10 +251,16 @@ export default function AdoptionRequestScreen() {
     } catch (error) {
       console.error("Unexpected error:", error);
       Alert.alert("Error", "An unexpected error occurred. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const onConfirmApplication = (data: AdoptionFormData) => {
+    if (isSubmitting) {
+      return;
+    }
+
     Alert.alert(
       "Confirm Submission",
       "Are you sure you want to submit this adoption request?",
@@ -599,12 +612,24 @@ export default function AdoptionRequestScreen() {
 
         <View className="absolute bottom-0 w-full bg-white/95 px-6 pt-4 pb-8 border-t border-surface-container-highest">
           <TouchableOpacity
-            className="bg-primary h-14 rounded-full flex-row items-center justify-center shadow-sm"
+            disabled={isSubmitting}
+            className={`h-14 rounded-full flex-row items-center justify-center ${
+              isSubmitting ? "bg-surface-container-highest" : "bg-primary"
+            }`}
             onPress={handleSubmit(onConfirmApplication)}
           >
-            <Text className="text-on-primary font-headline font-bold text-lg">
-              Submit Application
-            </Text>
+            {isSubmitting ? (
+              <View className="flex-row items-center gap-2">
+                <ActivityIndicator size="small" color="#8f8380" />
+                <Text className="text-on-surface-variant font-headline font-bold text-lg">
+                  Submitting...
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-on-primary font-headline font-bold text-lg">
+                Submit Application
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

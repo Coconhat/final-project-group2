@@ -182,6 +182,10 @@ export default function AdminScreen() {
   const [chatTableMissing, setChatTableMissing] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [savingPet, setSavingPet] = useState(false);
+  const [verdictRequestId, setVerdictRequestId] = useState<string | null>(
+    null,
+  );
   const [uploadImageIndex, setUploadImageIndex] = useState(0);
   const messageChannelRef = useRef<any>(null);
   const chatScrollRef = useRef<ScrollView>(null);
@@ -436,66 +440,77 @@ export default function AdminScreen() {
       return;
     }
 
-    if (
-      !petForm.name ||
-      !petForm.petType ||
-      !petForm.breed ||
-      !petForm.age ||
-      petForm.imageUrls.length === 0
-    ) {
-      Alert.alert(
-        "Missing fields",
-        "Name, pet type, breed, age and at least one image are required.",
-      );
+    if (savingPet) {
       return;
     }
 
-    const minimalPayload = {
-      name: petForm.name.trim(),
-      age: petForm.age.trim(),
-      breed: petForm.breed.trim(),
-      race: petForm.petType,
-      image_url: petForm.imageUrls.join(","),
-    };
+    setSavingPet(true);
 
-    const payload: Record<string, any> = {
-      ...minimalPayload,
-      pet_type: petForm.petType,
-      vaccinated: petForm.vaccinated,
-      tags: parseTags(petForm.tagsCsv),
-      description: petForm.description.trim() || null,
-      gender: petForm.gender || null,
-    };
+    try {
 
-    const runSave = (data: Record<string, any>) =>
-      editingPetId
-        ? supabase.from("pets").update(data).eq("id", editingPetId)
-        : supabase.from("pets").insert([data]);
+      if (
+        !petForm.name ||
+        !petForm.petType ||
+        !petForm.breed ||
+        !petForm.age ||
+        petForm.imageUrls.length === 0
+      ) {
+        Alert.alert(
+          "Missing fields",
+          "Name, pet type, breed, age and at least one image are required.",
+        );
+        return;
+      }
 
-    let { error } = await runSave(payload);
+      const minimalPayload = {
+        name: petForm.name.trim(),
+        age: petForm.age.trim(),
+        breed: petForm.breed.trim(),
+        race: petForm.petType,
+        image_url: petForm.imageUrls.join(","),
+      };
 
-    if (error?.code === "42703") {
-      const fallback = await runSave(minimalPayload);
-      error = fallback.error;
+      const payload: Record<string, any> = {
+        ...minimalPayload,
+        pet_type: petForm.petType,
+        vaccinated: petForm.vaccinated,
+        tags: parseTags(petForm.tagsCsv),
+        description: petForm.description.trim() || null,
+        gender: petForm.gender || null,
+      };
+
+      const runSave = (data: Record<string, any>) =>
+        editingPetId
+          ? supabase.from("pets").update(data).eq("id", editingPetId)
+          : supabase.from("pets").insert([data]);
+
+      let { error } = await runSave(payload);
+
+      if (error?.code === "42703") {
+        const fallback = await runSave(minimalPayload);
+        error = fallback.error;
+      }
+
+      if (error) {
+        const isRlsError = error.code === "42501";
+        Alert.alert(
+          "Save failed",
+          isRlsError
+            ? "RLS blocked writing to pets. Run SQL in schema/admin_pets_setup.sql."
+            : `${error.message}${error.code ? ` (${error.code})` : ""}`,
+        );
+        return;
+      }
+
+      Alert.alert("Success", editingPetId ? "Pet updated." : "Pet added.");
+      await invalidateCachedPrefix("pets:");
+      await invalidateCachedPrefix("pet:detail:");
+      await invalidateCachedPrefix("admin:dashboard:");
+      resetPetForm();
+      loadData();
+    } finally {
+      setSavingPet(false);
     }
-
-    if (error) {
-      const isRlsError = error.code === "42501";
-      Alert.alert(
-        "Save failed",
-        isRlsError
-          ? "RLS blocked writing to pets. Run SQL in schema/admin_pets_setup.sql."
-          : `${error.message}${error.code ? ` (${error.code})` : ""}`,
-      );
-      return;
-    }
-
-    Alert.alert("Success", editingPetId ? "Pet updated." : "Pet added.");
-    await invalidateCachedPrefix("pets:");
-    await invalidateCachedPrefix("pet:detail:");
-    await invalidateCachedPrefix("admin:dashboard:");
-    resetPetForm();
-    loadData();
   };
 
   const handleEditPet = (pet: any) => {
@@ -716,6 +731,13 @@ export default function AdminScreen() {
           text: nextStatus === "completed" ? "Approve" : "Reject",
           style: nextStatus === "rejected" ? "destructive" : "default",
           onPress: async () => {
+            if (verdictRequestId) {
+              return;
+            }
+
+            setVerdictRequestId(request.id);
+
+            try {
             if (!(await requireActiveAdminSession())) {
               return;
             }
@@ -841,6 +863,11 @@ export default function AdminScreen() {
               }
             }
             loadData();
+            } finally {
+              setVerdictRequestId((current) =>
+                current === request.id ? null : current,
+              );
+            }
           },
         },
       ],
@@ -1235,25 +1262,42 @@ export default function AdminScreen() {
               {editingPetId && (
                 <TouchableOpacity
                   onPress={resetPetForm}
+                  disabled={savingPet}
                   activeOpacity={0.7}
-                  className="h-13 px-5 rounded-2xl bg-surface-container-highest items-center justify-center"
+                  className="h-12 px-5 rounded-2xl bg-surface-container-highest items-center justify-center"
                 >
                   <Text className="text-on-surface font-bold">Cancel</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={handleSavePet}
+                disabled={savingPet || uploadingImage}
                 activeOpacity={0.8}
-                className="flex-1 min-h-[56px] rounded-2xl bg-primary px-4 py-3 items-center justify-center flex-row gap-2"
+                className={`flex-1 min-h-[56px] rounded-2xl px-4 py-3 items-center justify-center flex-row gap-2 ${
+                  savingPet || uploadingImage
+                    ? "bg-surface-container-highest"
+                    : "bg-primary"
+                }`}
               >
-                <MaterialIcons
-                  name={editingPetId ? "save" : "pets"}
-                  size={18}
-                  color="#ffffff"
-                />
-                <Text className="text-white font-bold text-[15px] leading-[20px]">
-                  {editingPetId ? "Update Pet" : "Add Pet"}
-                </Text>
+                {savingPet ? (
+                  <>
+                    <ActivityIndicator size="small" color="#8f8380" />
+                    <Text className="text-on-surface-variant font-bold text-[15px] leading-[20px]">
+                      Saving...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <MaterialIcons
+                      name={editingPetId ? "save" : "pets"}
+                      size={18}
+                      color="#ffffff"
+                    />
+                    <Text className="text-white font-bold text-[15px] leading-[20px]">
+                      {editingPetId ? "Update Pet" : "Add Pet"}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1361,6 +1405,8 @@ export default function AdminScreen() {
                 const done = checklistComplete(request.id);
                 const progress = checklistProgress(request.id);
                 const isPending = request.status === "pending";
+                const isVerdictLoading = verdictRequestId === request.id;
+                const verdictBusy = verdictRequestId !== null;
 
                 return (
                   <View
@@ -1567,54 +1613,81 @@ export default function AdminScreen() {
 
                       <TouchableOpacity
                         onPress={() => handleVerdict(request, "completed")}
-                        disabled={!isPending || !done}
+                        disabled={verdictBusy || !isPending || !done}
                         activeOpacity={0.8}
                         className={`flex-1 h-11 rounded-2xl items-center justify-center flex-row gap-1.5 ${
-                          !isPending || !done
+                          verdictBusy || !isPending || !done
                             ? "bg-secondary/20"
                             : "bg-secondary"
                         }`}
                       >
-                        <MaterialIcons
-                          name="check"
-                          size={16}
-                          color={!isPending || !done ? "#a79a96" : "white"}
-                        />
-                        <Text
-                          className={`font-bold text-sm ${
-                            !isPending || !done
-                              ? "text-on-surface-variant"
-                              : "text-white"
-                          }`}
-                        >
-                          Approve
-                        </Text>
+                        {isVerdictLoading ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <>
+                            <MaterialIcons
+                              name="check"
+                              size={16}
+                              color={
+                                verdictBusy || !isPending || !done
+                                  ? "#a79a96"
+                                  : "white"
+                              }
+                            />
+                            <Text
+                              className={`font-bold text-sm ${
+                                verdictBusy || !isPending || !done
+                                  ? "text-on-surface-variant"
+                                  : "text-white"
+                              }`}
+                            >
+                              Approve
+                            </Text>
+                          </>
+                        )}
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => handleVerdict(request, "rejected")}
-                        disabled={!isPending || !done}
+                        disabled={verdictBusy || !isPending || !done}
                         activeOpacity={0.8}
                         className={`flex-1 h-11 rounded-2xl items-center justify-center flex-row gap-1.5 ${
-                          !isPending || !done ? "bg-error/20" : "bg-error"
+                          verdictBusy || !isPending || !done
+                            ? "bg-error/20"
+                            : "bg-error"
                         }`}
                       >
-                        <MaterialIcons
-                          name="close"
-                          size={16}
-                          color={!isPending || !done ? "#a79a96" : "white"}
-                        />
-                        <Text
-                          className={`font-bold text-sm ${
-                            !isPending || !done
-                              ? "text-on-surface-variant"
-                              : "text-white"
-                          }`}
-                        >
-                          Reject
-                        </Text>
+                        {isVerdictLoading ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <>
+                            <MaterialIcons
+                              name="close"
+                              size={16}
+                              color={
+                                verdictBusy || !isPending || !done
+                                  ? "#a79a96"
+                                  : "white"
+                              }
+                            />
+                            <Text
+                              className={`font-bold text-sm ${
+                                verdictBusy || !isPending || !done
+                                  ? "text-on-surface-variant"
+                                  : "text-white"
+                              }`}
+                            >
+                              Reject
+                            </Text>
+                          </>
+                        )}
                       </TouchableOpacity>
                     </View>
+                    {isPending && !done && (
+                      <Text className="text-xs text-on-surface-variant px-5 pb-4 -mt-2">
+                        Complete all checklist items to enable Approve or Reject.
+                      </Text>
+                    )}
                   </View>
                 );
               })}

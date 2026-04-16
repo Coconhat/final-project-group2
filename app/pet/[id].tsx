@@ -97,7 +97,10 @@ export default function PetDetailsScreen() {
             .maybeSingle();
 
           if (requestError) {
-            console.error("Error checking existing request on pet details:", requestError);
+            console.error(
+              "Error checking existing request on pet details:",
+              requestError,
+            );
           }
 
           setHasRequested(!!requestData);
